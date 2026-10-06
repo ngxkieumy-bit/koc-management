@@ -10,6 +10,7 @@ import pandas as pd
 conn = sqlite3.connect("koc_data.db", check_same_thread=False)
 cursor = conn.cursor()
 
+# KOC table
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS koc (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,6 +19,17 @@ CREATE TABLE IF NOT EXISTS koc (
     name TEXT,
     follower INTEGER DEFAULT 0,
     category TEXT,
+    note TEXT
+)
+""")
+
+# Brand table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS brands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_name TEXT UNIQUE,
+    commission REAL DEFAULT 0,
+    target_gmv REAL DEFAULT 0,
     note TEXT
 )
 """)
@@ -54,7 +66,8 @@ page = st.sidebar.radio(
     "MENU",
     [
         "🏠 Dashboard",
-        "👤 KOC Database"
+        "👤 KOC Database",
+        "🏷️ Brand Database"
     ]
 )
 
@@ -80,6 +93,11 @@ if page == "🏠 Dashboard":
         conn
     ).iloc[0]["total"]
 
+    total_brand = pd.read_sql(
+        "SELECT COUNT(*) AS total FROM brands",
+        conn
+    ).iloc[0]["total"]
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -90,27 +108,23 @@ if page == "🏠 Dashboard":
 
     with col2:
         st.metric(
-            "📱 KOC có SĐT",
-            int(total_phone)
+            "🏷️ Tổng Brand",
+            int(total_brand)
         )
 
     with col3:
         st.metric(
-            "🏷️ Ngành hàng",
-            pd.read_sql(
-                """
-                SELECT COUNT(DISTINCT category) AS total
-                FROM koc
-                WHERE category IS NOT NULL
-                AND category != ''
-                """,
-                conn
-            ).iloc[0]["total"]
+            "📱 KOC có SĐT",
+            int(total_phone)
         )
 
     st.success("🚀 Hệ thống KOC đang hoạt động.")
 
     st.divider()
+
+    # =====================================================
+    # KOC OVERVIEW
+    # =====================================================
 
     st.subheader("📈 Tổng quan KOC")
 
@@ -134,6 +148,43 @@ if page == "🏠 Dashboard":
         )
     else:
         st.info("Chưa có dữ liệu KOC.")
+
+    st.divider()
+
+    # =====================================================
+    # BRAND OVERVIEW
+    # =====================================================
+
+    st.subheader("🏷️ Tổng quan Brand")
+
+    brand_overview = pd.read_sql(
+        """
+        SELECT
+            brand_name AS "Brand",
+            commission AS "Commission (%)",
+            target_gmv AS "GMV mục tiêu"
+        FROM brands
+        ORDER BY target_gmv DESC
+        """,
+        conn
+    )
+
+    if not brand_overview.empty:
+
+        brand_overview["TAP dự kiến nhận"] = (
+            brand_overview["GMV mục tiêu"]
+            * brand_overview["Commission (%)"]
+            / 100
+        )
+
+        st.dataframe(
+            brand_overview,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+        st.info("Chưa có dữ liệu Brand.")
 
 
 # =========================================================
@@ -515,10 +566,7 @@ elif page == "👤 KOC Database":
                                 username = "@" + username
 
                             phone = str(
-                                row.get(
-                                    "phone",
-                                    ""
-                                )
+                                row["phone"]
                             ).strip()
 
                             if phone == "nan":
@@ -589,9 +637,7 @@ elif page == "👤 KOC Database":
                                     (
                                         phone,
                                         name_value,
-                                        int(
-                                            follower_value
-                                        ),
+                                        int(follower_value),
                                         category_value,
                                         note_value,
                                         username
@@ -619,9 +665,7 @@ elif page == "👤 KOC Database":
                                         username,
                                         phone,
                                         name_value,
-                                        int(
-                                            follower_value
-                                        ),
+                                        int(follower_value),
                                         category_value,
                                         note_value
                                     )
@@ -701,9 +745,7 @@ elif page == "👤 KOC Database":
 
         if search.strip():
 
-            search_text = (
-                search.strip().lower()
-            )
+            search_text = search.strip().lower()
 
             filtered = filtered[
                 filtered["username"]
@@ -806,5 +848,426 @@ elif page == "👤 KOC Database":
             "📥 Xuất danh sách KOC",
             data=csv,
             file_name="koc_database.csv",
+            mime="text/csv"
+        )
+
+
+# =========================================================
+# BRAND DATABASE
+# =========================================================
+
+elif page == "🏷️ Brand Database":
+
+    st.header("🏷️ Brand Database")
+
+    tab1, tab2, tab3 = st.tabs(
+        [
+            "➕ Thêm Brand",
+            "📥 Import Excel",
+            "📋 Brand List"
+        ]
+    )
+
+
+    # =====================================================
+    # TAB 1 - ADD BRAND
+    # =====================================================
+
+    with tab1:
+
+        st.subheader("➕ Thêm Brand")
+
+        brand_name = st.text_input(
+            "Tên Brand",
+            placeholder="Ví dụ: Maison Lena"
+        )
+
+        commission = st.number_input(
+            "Commission (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=2.0,
+            step=0.1
+        )
+
+        target_gmv = st.number_input(
+            "🎯 GMV mục tiêu",
+            min_value=0.0,
+            value=0.0,
+            step=1000000.0
+        )
+
+        note = st.text_area(
+            "Ghi chú",
+            placeholder="Ví dụ: Beauty / TikTok Shop / Campaign tháng 10"
+        )
+
+        if st.button(
+            "💾 Lưu Brand",
+            type="primary"
+        ):
+
+            brand_name = brand_name.strip()
+
+            if not brand_name:
+
+                st.error(
+                    "Vui lòng nhập tên Brand."
+                )
+
+            else:
+
+                try:
+
+                    cursor.execute(
+                        """
+                        INSERT INTO brands
+                        (
+                            brand_name,
+                            commission,
+                            target_gmv,
+                            note
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            brand_name,
+                            float(commission),
+                            float(target_gmv),
+                            note.strip()
+                        )
+                    )
+
+                    conn.commit()
+
+                    st.success(
+                        f"Đã lưu Brand: {brand_name}"
+                    )
+
+                except sqlite3.IntegrityError:
+
+                    st.warning(
+                        f"Brand '{brand_name}' đã tồn tại."
+                    )
+
+
+    # =====================================================
+    # TAB 2 - IMPORT BRAND
+    # =====================================================
+
+    with tab2:
+
+        st.subheader(
+            "📥 Import Brand từ Excel"
+        )
+
+        st.write(
+            "File Excel cần có:"
+        )
+
+        st.markdown(
+            "**brand_name, commission, target_gmv**"
+        )
+
+        st.write(
+            "Có thể thêm:"
+        )
+
+        st.markdown(
+            "**note**"
+        )
+
+        uploaded_brand_file = st.file_uploader(
+            "Chọn file Excel Brand",
+            type=["xlsx", "xls"],
+            key="brand_upload"
+        )
+
+        if uploaded_brand_file is not None:
+
+            try:
+
+                brand_df = pd.read_excel(
+                    uploaded_brand_file
+                )
+
+                st.write(
+                    "📋 Preview:"
+                )
+
+                st.dataframe(
+                    brand_df.head(10),
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                required_columns = [
+                    "brand_name",
+                    "commission",
+                    "target_gmv"
+                ]
+
+                missing_columns = [
+                    col
+                    for col in required_columns
+                    if col not in brand_df.columns
+                ]
+
+                if missing_columns:
+
+                    st.error(
+                        "File đang thiếu cột: "
+                        + ", ".join(
+                            missing_columns
+                        )
+                    )
+
+                else:
+
+                    if st.button(
+                        "🚀 Import Brand",
+                        type="primary"
+                    ):
+
+                        added = 0
+                        updated = 0
+                        skipped = 0
+
+                        for _, row in brand_df.iterrows():
+
+                            brand_name = str(
+                                row["brand_name"]
+                            ).strip()
+
+                            if (
+                                not brand_name
+                                or brand_name == "nan"
+                            ):
+
+                                skipped += 1
+                                continue
+
+                            commission_value = row[
+                                "commission"
+                            ]
+
+                            target_gmv_value = row[
+                                "target_gmv"
+                            ]
+
+                            if pd.isna(
+                                commission_value
+                            ):
+                                commission_value = 0
+
+                            if pd.isna(
+                                target_gmv_value
+                            ):
+                                target_gmv_value = 0
+
+                            note_value = str(
+                                row.get(
+                                    "note",
+                                    ""
+                                )
+                            ).strip()
+
+                            if note_value == "nan":
+                                note_value = ""
+
+                            existing = cursor.execute(
+                                """
+                                SELECT id
+                                FROM brands
+                                WHERE brand_name = ?
+                                """,
+                                (brand_name,)
+                            ).fetchone()
+
+                            if existing:
+
+                                cursor.execute(
+                                    """
+                                    UPDATE brands
+                                    SET
+                                        commission = ?,
+                                        target_gmv = ?,
+                                        note = ?
+                                    WHERE brand_name = ?
+                                    """,
+                                    (
+                                        float(
+                                            commission_value
+                                        ),
+                                        float(
+                                            target_gmv_value
+                                        ),
+                                        note_value,
+                                        brand_name
+                                    )
+                                )
+
+                                updated += 1
+
+                            else:
+
+                                cursor.execute(
+                                    """
+                                    INSERT INTO brands
+                                    (
+                                        brand_name,
+                                        commission,
+                                        target_gmv,
+                                        note
+                                    )
+                                    VALUES (?, ?, ?, ?)
+                                    """,
+                                    (
+                                        brand_name,
+                                        float(
+                                            commission_value
+                                        ),
+                                        float(
+                                            target_gmv_value
+                                        ),
+                                        note_value
+                                    )
+                                )
+
+                                added += 1
+
+                        conn.commit()
+
+                        st.success(
+                            f"Import thành công! "
+                            f"➕ {added} Brand mới | "
+                            f"🔄 {updated} Brand cập nhật | "
+                            f"⚠️ {skipped} dòng bỏ qua"
+                        )
+
+            except Exception as e:
+
+                st.error(
+                    f"Không thể đọc file: {e}"
+                )
+
+
+    # =====================================================
+    # TAB 3 - BRAND LIST
+    # =====================================================
+
+    with tab3:
+
+        st.subheader(
+            "📋 Danh sách Brand"
+        )
+
+        all_brands = pd.read_sql(
+            """
+            SELECT
+                id,
+                brand_name,
+                commission,
+                target_gmv,
+                note
+            FROM brands
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+        search_brand = st.text_input(
+            "🔎 Tìm Brand",
+            placeholder="Nhập tên Brand"
+        )
+
+        filtered_brands = all_brands.copy()
+
+        if search_brand.strip():
+
+            search_text = (
+                search_brand.strip().lower()
+            )
+
+            filtered_brands = filtered_brands[
+                filtered_brands["brand_name"]
+                .astype(str)
+                .str.lower()
+                .str.contains(
+                    search_text,
+                    na=False
+                )
+            ]
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.metric(
+                "🏷️ Tổng Brand",
+                len(all_brands)
+            )
+
+        with col2:
+
+            st.metric(
+                "🔎 Kết quả",
+                len(filtered_brands)
+            )
+
+        with col3:
+
+            total_target = (
+                filtered_brands["target_gmv"]
+                .sum()
+            )
+
+            st.metric(
+                "🎯 Tổng GMV mục tiêu",
+                f"{total_target:,.0f} đ"
+            )
+
+        st.divider()
+
+        display_brand = filtered_brands.copy()
+
+        display_brand["TAP dự kiến nhận"] = (
+            display_brand["target_gmv"]
+            * display_brand["commission"]
+            / 100
+        )
+
+        display_brand = display_brand[
+            [
+                "brand_name",
+                "commission",
+                "target_gmv",
+                "TAP dự kiến nhận",
+                "note"
+            ]
+        ]
+
+        display_brand.columns = [
+            "Brand",
+            "Commission (%)",
+            "GMV mục tiêu",
+            "TAP dự kiến nhận",
+            "Ghi chú"
+        ]
+
+        st.dataframe(
+            display_brand,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        csv = filtered_brands.to_csv(
+            index=False
+        ).encode("utf-8-sig")
+
+        st.download_button(
+            "📥 Xuất danh sách Brand",
+            data=csv,
+            file_name="brand_database.csv",
             mime="text/csv"
         )
