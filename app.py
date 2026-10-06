@@ -141,6 +141,31 @@ def percent(value):
     return f"{value:.2f}%"
 
 
+def get_target_cycle(month_text):
+    """
+    Công ty tính Target theo chu kỳ 2 tháng:
+    09-10, 11-12, 01-02, 03-04, ...
+    """
+    year, month = map(int, str(month_text).split("-"))
+
+    if month % 2 == 1:
+        start_month = month
+        end_month = month + 1
+    else:
+        start_month = month - 1
+        end_month = month
+
+    # Xử lý trường hợp tháng 12.
+    if end_month == 13:
+        start_month = 11
+        end_month = 12
+
+    cycle_start = f"{year:04d}-{start_month:02d}"
+    cycle_end = f"{year:04d}-{end_month:02d}"
+
+    return cycle_start, cycle_end, f"{start_month:02d}/{year} - {end_month:02d}/{year}"
+
+
 def clean_money(series):
     """
     Xử lý tiền TikTok dạng:
@@ -457,15 +482,61 @@ if page == "🏠 Dashboard":
         )
 
         # =====================================================
-        # TARGET DOANH THU THÁNG
+        # TARGET DOANH THU 2 THÁNG
         # =====================================================
 
         st.divider()
-        st.subheader("🎯 Target tổng doanh thu")
+        st.subheader("🎯 Target tổng doanh thu (chu kỳ 2 tháng)")
+
+        cycle_start, cycle_end, cycle_label = get_target_cycle(
+            selected_month
+        )
+
+        cycle_months = [cycle_start, cycle_end]
+
+        cycle_analytics = analytics_all[
+            analytics_all["report_month"].astype(str).isin(
+                cycle_months
+            )
+        ].copy()
+
+        cycle_booking = booking_all[
+            booking_all["contract_month"].astype(str).isin(
+                cycle_months
+            )
+        ].copy()
+
+        cycle_tap = (
+            float(cycle_analytics["ac"].sum())
+            if not cycle_analytics.empty
+            else 0.0
+        )
+
+        cycle_booking_paid = (
+            float(cycle_booking["paid_amount"].sum())
+            if not cycle_booking.empty
+            else 0.0
+        )
+
+        cycle_koc_paid = (
+            float(cycle_booking["koc_paid_amount"].sum())
+            if not cycle_booking.empty
+            else 0.0
+        )
+
+        cycle_booking_net = max(
+            cycle_booking_paid - cycle_koc_paid,
+            0
+        )
+
+        cycle_total_revenue = (
+            cycle_tap + cycle_booking_net
+        )
 
         target_row = revenue_targets[
-            revenue_targets["target_month"].astype(str)
-            == selected_month
+            revenue_targets["target_month"].astype(str).isin(
+                cycle_months
+            )
         ]
 
         saved_target = (
@@ -480,57 +551,63 @@ if page == "🏠 Dashboard":
             else ""
         )
 
+        st.info(
+            f"📅 Chu kỳ Target: **{cycle_label}** — "
+            f"Tháng {cycle_start} và {cycle_end} dùng chung 1 Target."
+        )
+
         t1, t2 = st.columns([2, 1])
 
         with t1:
             target_revenue_input = st.number_input(
-                "Target tổng doanh thu",
+                "🎯 Target tổng doanh thu cho 2 tháng",
                 min_value=0.0,
                 value=saved_target,
                 step=1000000.0,
                 format="%.0f",
-                key=f"dashboard_target_revenue_{selected_month}"
+                key=f"dashboard_target_revenue_{cycle_start}_{cycle_end}"
             )
 
         with t2:
             target_note = st.text_input(
                 "Ghi chú",
                 value=saved_target_note,
-                key=f"dashboard_target_note_{selected_month}"
+                key=f"dashboard_target_note_{cycle_start}_{cycle_end}"
             )
 
         if st.button(
-            "💾 Lưu Target doanh thu",
+            "💾 Lưu Target 2 tháng",
             type="primary",
-            key=f"save_dashboard_target_{selected_month}"
+            key=f"save_dashboard_target_{cycle_start}_{cycle_end}"
         ):
 
-            cursor.execute(
-                """
-                INSERT INTO total_revenue_targets
-                (
-                    target_month,
-                    target_revenue,
-                    note
+            for target_month in cycle_months:
+                cursor.execute(
+                    """
+                    INSERT INTO total_revenue_targets
+                    (
+                        target_month,
+                        target_revenue,
+                        note
+                    )
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(target_month)
+                    DO UPDATE SET
+                        target_revenue = excluded.target_revenue,
+                        note = excluded.note
+                    """,
+                    (
+                        target_month,
+                        float(target_revenue_input),
+                        target_note.strip()
+                    )
                 )
-                VALUES (?, ?, ?)
-                ON CONFLICT(target_month)
-                DO UPDATE SET
-                    target_revenue = excluded.target_revenue,
-                    note = excluded.note
-                """,
-                (
-                    selected_month,
-                    float(target_revenue_input),
-                    target_note.strip()
-                )
-            )
 
             conn.commit()
 
             st.success(
-                f"✅ Đã lưu Target {selected_month}: "
-                f"{money(target_revenue_input)}"
+                f"✅ Đã lưu chung Target {money(target_revenue_input)} "
+                f"cho chu kỳ {cycle_label}."
             )
 
             st.rerun()
@@ -539,18 +616,18 @@ if page == "🏠 Dashboard":
 
         if target_revenue > 0:
             achievement_rate = (
-                total_revenue
+                cycle_total_revenue
                 / target_revenue
                 * 100
             )
 
             remaining_revenue = max(
-                target_revenue - total_revenue,
+                target_revenue - cycle_total_revenue,
                 0
             )
 
             excess_revenue = max(
-                total_revenue - target_revenue,
+                cycle_total_revenue - target_revenue,
                 0
             )
         else:
@@ -562,43 +639,38 @@ if page == "🏠 Dashboard":
 
         with q1:
             st.metric(
-                "🎯 Target",
+                "🎯 Target 2 tháng",
                 money(target_revenue)
             )
 
         with q2:
             st.metric(
+                "💰 Doanh thu 2 tháng",
+                money(cycle_total_revenue)
+            )
+
+        with q3:
+            st.metric(
                 "📊 % đạt Target",
                 percent(achievement_rate)
             )
 
-        with q3:
-            if target_revenue > 0 and remaining_revenue > 0:
-                st.metric(
-                    "⚠️ Còn thiếu",
-                    money(remaining_revenue)
-                )
-            elif target_revenue > 0:
-                st.metric(
-                    "✅ Vượt Target",
-                    money(excess_revenue)
-                )
-            else:
-                st.metric(
-                    "⚠️ Còn thiếu",
-                    "—"
-                )
-
         if target_revenue > 0:
-            if total_revenue >= target_revenue:
+            if cycle_total_revenue >= target_revenue:
                 st.success(
-                    f"🎉 Tổng doanh thu tháng {selected_month} đã đạt Target!"
+                    f"🎉 Chu kỳ {cycle_label} đã đạt Target! "
+                    f"Vượt {money(excess_revenue)}."
                 )
             else:
                 st.warning(
-                    f"📌 Cần thêm {money(remaining_revenue)} "
-                    "doanh thu để đạt Target."
+                    f"📌 Chu kỳ {cycle_label} còn thiếu "
+                    f"{money(remaining_revenue)} doanh thu để đạt Target."
                 )
+
+        st.caption(
+            "Doanh thu 2 tháng = Hoa hồng TAP thực tế + Gói dịch vụ ròng "
+            "của cả 2 tháng trong chu kỳ."
+        )
 
         if not current.empty:
 
