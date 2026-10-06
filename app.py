@@ -163,107 +163,462 @@ page = st.sidebar.radio(
 
 if page == "🏠 Dashboard":
 
-    total_koc = pd.read_sql(
-        "SELECT COUNT(*) AS total FROM koc",
-        conn
-    ).iloc[0]["total"]
+    st.header("🏠 Dashboard tổng")
+    st.write("Tổng quan hiệu quả KOC/KOL, Brand và doanh số TikTok.")
 
-    total_brand = pd.read_sql(
-        "SELECT COUNT(*) AS total FROM brands",
-        conn
-    ).iloc[0]["total"]
+    # =====================================================
+    # DATABASE KPI
+    # =====================================================
 
-    total_month = pd.read_sql(
-        """
-        SELECT COUNT(DISTINCT report_month) AS total
-        FROM analytics
-        """,
-        conn
-    ).iloc[0]["total"]
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            "👤 Tổng KOC",
-            int(total_koc)
-        )
-
-    with col2:
-
-        st.metric(
-            "🏷️ Tổng Brand",
-            int(total_brand)
-        )
-
-    with col3:
-
-        st.metric(
-            "📅 Tháng dữ liệu",
-            int(total_month)
-        )
-
-    st.success(
-        "🚀 Hệ thống KOC đang hoạt động."
+    total_koc = int(
+        pd.read_sql(
+            "SELECT COUNT(*) AS total FROM koc",
+            conn
+        ).iloc[0]["total"]
     )
 
-    data = pd.read_sql(
+    total_brand = int(
+        pd.read_sql(
+            "SELECT COUNT(*) AS total FROM brands",
+            conn
+        ).iloc[0]["total"]
+    )
+
+    analytics_all = pd.read_sql(
         """
         SELECT
+            report_date,
             report_month,
-            SUM(gmv) AS gmv,
-            SUM(ac) AS ac
+            creator_name,
+            store_name,
+            gmv,
+            ac
         FROM analytics
-        GROUP BY report_month
-        ORDER BY report_month DESC
         """,
         conn
     )
 
-    if data.empty:
+    total_month = (
+        int(analytics_all["report_month"].nunique())
+        if not analytics_all.empty
+        else 0
+    )
+
+    if analytics_all.empty:
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("👤 Tổng KOC", f"{total_koc:,}")
+
+        with col2:
+            st.metric("🏷️ Tổng Brand", f"{total_brand:,}")
+
+        with col3:
+            st.metric("📅 Tháng dữ liệu", "0")
 
         st.info(
-            "Chưa có dữ liệu Analytics."
+            "Vào **📊 Monthly Analytics** để upload báo cáo TikTok."
         )
 
     else:
 
-        data["Tỷ lệ hoa hồng"] = (
-            data["ac"]
-            / data["gmv"]
+        # =====================================================
+        # CHỌN THÁNG
+        # =====================================================
+
+        months = sorted(
+            analytics_all["report_month"]
+            .dropna()
+            .unique()
+            .tolist(),
+            reverse=True
+        )
+
+        selected_month = st.selectbox(
+            "📅 Tháng báo cáo",
+            months
+        )
+
+        current = analytics_all[
+            analytics_all["report_month"] == selected_month
+        ].copy()
+
+        current_gmv = float(current["gmv"].sum())
+        current_ac = float(current["ac"].sum())
+
+        current_rate = (
+            current_ac / current_gmv * 100
+            if current_gmv != 0
+            else 0
+        )
+
+        # =====================================================
+        # KPI CARDS
+        # =====================================================
+
+        st.divider()
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
+            st.metric(
+                "👤 Tổng KOC",
+                f"{total_koc:,}"
+            )
+
+        with col2:
+            st.metric(
+                "🏷️ Tổng Brand",
+                f"{total_brand:,}"
+            )
+
+        with col3:
+            st.metric(
+                "💰 GMV",
+                money(current_gmv)
+            )
+
+        with col4:
+            st.metric(
+                "💵 Hoa hồng thực tế",
+                money(current_ac)
+            )
+
+        with col5:
+            st.metric(
+                "📊 Tỷ lệ hoa hồng",
+                percent(current_rate)
+            )
+
+        st.caption(
+            f"Đang xem tháng {selected_month} • "
+            f"{total_month} tháng dữ liệu trong hệ thống."
+        )
+
+        # =====================================================
+        # BRAND PERFORMANCE
+        # =====================================================
+
+        st.divider()
+        st.subheader("🎯 Hiệu quả Brand")
+
+        brand_actual = (
+            current.groupby("store_name", as_index=False)
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum"),
+                KOC=("creator_name", "nunique")
+            )
+        )
+
+        brand_master = pd.read_sql(
+            """
+            SELECT
+                brand_name,
+                commission,
+                target_gmv
+            FROM brands
+            """,
+            conn
+        )
+
+        brand_master["brand_name"] = (
+            brand_master["brand_name"]
+            .fillna("")
+            .astype(str)
+            .str.replace("\r", "", regex=False)
+            .str.strip()
+        )
+
+        brand_actual["store_name"] = (
+            brand_actual["store_name"]
+            .fillna("")
+            .astype(str)
+            .str.replace("\r", "", regex=False)
+            .str.strip()
+        )
+
+        brand_perf = brand_actual.merge(
+            brand_master,
+            left_on="store_name",
+            right_on="brand_name",
+            how="left"
+        )
+
+        brand_perf["target_gmv"] = (
+            pd.to_numeric(
+                brand_perf["target_gmv"],
+                errors="coerce"
+            )
+            .fillna(0)
+        )
+
+        brand_perf["% hoàn thành"] = 0.0
+
+        has_target = brand_perf["target_gmv"] > 0
+
+        brand_perf.loc[has_target, "% hoàn thành"] = (
+            brand_perf.loc[has_target, "GMV"]
+            / brand_perf.loc[has_target, "target_gmv"]
+            * 100
+        )
+
+        brand_perf["Tỷ lệ hoa hồng"] = (
+            brand_perf["AC"]
+            / brand_perf["GMV"]
             * 100
         ).fillna(0)
 
-        display = data.copy()
-
-        display["gmv"] = (
-            display["gmv"]
-            .apply(money)
+        brand_perf = brand_perf.sort_values(
+            "AC",
+            ascending=False
         )
 
-        display["ac"] = (
-            display["ac"]
-            .apply(money)
-        )
+        below_target = brand_perf[
+            (brand_perf["target_gmv"] > 0)
+            & (brand_perf["% hoàn thành"] < 100)
+        ].copy()
 
-        display.columns = [
-            "Tháng",
+        if not below_target.empty:
+            st.warning(
+                f"⚠️ Có {len(below_target):,} Brand chưa đạt 100% GMV mục tiêu."
+            )
+        else:
+            st.success(
+                "✅ Tất cả Brand có target đều đã đạt GMV mục tiêu."
+            )
+
+        brand_display = brand_perf[
+            [
+                "store_name",
+                "GMV",
+                "target_gmv",
+                "% hoàn thành",
+                "AC",
+                "Tỷ lệ hoa hồng",
+                "KOC"
+            ]
+        ].copy()
+
+        brand_display.columns = [
+            "Brand",
             "GMV",
+            "GMV mục tiêu",
+            "% hoàn thành",
             "Hoa hồng thực tế",
-            "Tỷ lệ hoa hồng"
+            "Tỷ lệ hoa hồng",
+            "KOC"
         ]
 
+        brand_display["GMV"] = (
+            brand_display["GMV"]
+            .apply(money)
+        )
+
+        brand_display["GMV mục tiêu"] = (
+            brand_display["GMV mục tiêu"]
+            .apply(lambda x: money(x) if x > 0 else "—")
+        )
+
+        brand_display["% hoàn thành"] = (
+            brand_display["% hoàn thành"]
+            .apply(lambda x: f"{x:.1f}%")
+        )
+
+        brand_display["Hoa hồng thực tế"] = (
+            brand_display["Hoa hồng thực tế"]
+            .apply(money)
+        )
+
+        brand_display["Tỷ lệ hoa hồng"] = (
+            brand_display["Tỷ lệ hoa hồng"]
+            .apply(percent)
+        )
+
         st.dataframe(
-            display,
+            brand_display,
             use_container_width=True,
             hide_index=True
         )
 
+        # =====================================================
+        # TOP BRAND + TOP KOC
+        # =====================================================
 
-# =========================================================
-# KOC DATABASE
-# =========================================================
+        st.divider()
+
+        left, right = st.columns(2)
+
+        with left:
+            st.subheader("🏆 Top 10 Brand")
+
+            top_brand = (
+                current.groupby("store_name", as_index=False)
+                .agg(
+                    GMV=("gmv", "sum"),
+                    AC=("ac", "sum")
+                )
+                .sort_values(
+                    "AC",
+                    ascending=False
+                )
+                .head(10)
+            )
+
+            top_brand_display = top_brand.copy()
+
+            top_brand_display["GMV"] = (
+                top_brand_display["GMV"]
+                .apply(money)
+            )
+
+            top_brand_display["AC"] = (
+                top_brand_display["AC"]
+                .apply(money)
+            )
+
+            top_brand_display.columns = [
+                "Brand",
+                "GMV",
+                "Hoa hồng thực tế"
+            ]
+
+            st.dataframe(
+                top_brand_display,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with right:
+            st.subheader("👑 Top 10 KOC/NST")
+
+            top_koc = (
+                current.groupby("creator_name", as_index=False)
+                .agg(
+                    GMV=("gmv", "sum"),
+                    AC=("ac", "sum")
+                )
+                .sort_values(
+                    "AC",
+                    ascending=False
+                )
+                .head(10)
+            )
+
+            top_koc_display = top_koc.copy()
+
+            top_koc_display["GMV"] = (
+                top_koc_display["GMV"]
+                .apply(money)
+            )
+
+            top_koc_display["AC"] = (
+                top_koc_display["AC"]
+                .apply(money)
+            )
+
+            top_koc_display.columns = [
+                "KOC/NST",
+                "GMV",
+                "Hoa hồng thực tế"
+            ]
+
+            st.dataframe(
+                top_koc_display,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # =====================================================
+        # BIỂU ĐỒ THEO THÁNG
+        # =====================================================
+
+        st.divider()
+        st.subheader("📈 Xu hướng theo tháng")
+
+        monthly_chart = (
+            analytics_all.groupby("report_month", as_index=True)
+            .agg(
+                GMV=("gmv", "sum"),
+                Hoa_hong_thuc_te=("ac", "sum")
+            )
+            .sort_index()
+        )
+
+        chart_left, chart_right = st.columns(2)
+
+        with chart_left:
+            st.write("💰 GMV")
+            st.line_chart(
+                monthly_chart[["GMV"]]
+            )
+
+        with chart_right:
+            st.write("💵 Hoa hồng thực tế")
+            st.line_chart(
+                monthly_chart[["Hoa_hong_thuc_te"]]
+            )
+
+        # =====================================================
+        # MONTHLY SUMMARY
+        # =====================================================
+
+        st.divider()
+        st.subheader("📅 Tổng quan các tháng")
+
+        monthly_summary = (
+            analytics_all.groupby("report_month", as_index=False)
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum"),
+                KOC=("creator_name", "nunique"),
+                Brand=("store_name", "nunique")
+            )
+        )
+
+        monthly_summary["Tỷ lệ hoa hồng"] = (
+            monthly_summary["AC"]
+            / monthly_summary["GMV"]
+            * 100
+        ).fillna(0)
+
+        monthly_summary = monthly_summary.sort_values(
+            "report_month",
+            ascending=False
+        )
+
+        monthly_display = monthly_summary.copy()
+
+        monthly_display.columns = [
+            "Tháng",
+            "GMV",
+            "Hoa hồng thực tế",
+            "KOC",
+            "Brand",
+            "Tỷ lệ hoa hồng"
+        ]
+
+        monthly_display["GMV"] = (
+            monthly_display["GMV"]
+            .apply(money)
+        )
+
+        monthly_display["Hoa hồng thực tế"] = (
+            monthly_display["Hoa hồng thực tế"]
+            .apply(money)
+        )
+
+        monthly_display["Tỷ lệ hoa hồng"] = (
+            monthly_display["Tỷ lệ hoa hồng"]
+            .apply(percent)
+        )
+
+        st.dataframe(
+            monthly_display,
+            use_container_width=True,
+            hide_index=True
+        )
 
 elif page == "👤 KOC Database":
 
