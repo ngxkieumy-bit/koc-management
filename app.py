@@ -477,11 +477,23 @@ if page == "dashboard":
             analytics_all["report_month"].astype(str) == selected_month
         ].copy()
 
-        # Booking tháng được chuẩn hóa lại lần nữa ngay tại Dashboard.
-        # Nếu dữ liệu đã có trong trang Booking thì Dashboard phải lấy đúng
-        # doanh thu ròng của cùng tháng, kể cả khi contract_month được lưu
-        # dưới dạng YYYY-MM, YYYY-MM-DD hoặc giá trị date/time.
-        current_booking = booking_all.copy()
+        # Booking tháng: đọc trực tiếp từ cùng bảng booking_services để Dashboard
+        # luôn đồng bộ với trang Booking, kể cả khi contract_month được lưu
+        # dưới dạng YYYY-MM hoặc YYYY-MM-DD.
+        current_booking = pd.read_sql(
+            """
+            SELECT
+                id, contract_month, brand_name, service_group, package_name,
+                tier, contract_fee, running, paid, paid_amount,
+                koc_paid_amount, note
+            FROM booking_services
+            WHERE TRIM(contract_month) = ?
+               OR SUBSTR(TRIM(contract_month), 1, 7) = ?
+            """,
+            conn,
+            params=(str(selected_month), str(selected_month))
+        )
+
         if not current_booking.empty:
             current_booking["_month_key"] = current_booking["contract_month"].apply(
                 normalize_month_value
@@ -1020,10 +1032,13 @@ if page == "dashboard":
             ).clip(lower=0)
 
             booking_summary_display = booking_summary.copy()
+            # booking_summary có 6 cột: Brand + 4 cột aggregate + Chưa thanh toán.
+            # Phải đặt đúng 6 tên cột để tránh ValueError của pandas.
             booking_summary_display.columns = [
                 "Brand",
                 "Tổng hợp đồng",
                 "Đã thanh toán",
+                "KOC đã thanh toán",
                 "Đang chạy",
                 "Chưa thanh toán"
             ]
@@ -1031,6 +1046,8 @@ if page == "dashboard":
             for col in [
                 "Tổng hợp đồng",
                 "Đã thanh toán",
+                "KOC đã thanh toán",
+                "Đang chạy",
                 "Chưa thanh toán"
             ]:
                 booking_summary_display[col] = (
@@ -2924,41 +2941,57 @@ elif page == "booking":
         )
 
         st.caption(
-            "💡 Mỗi dòng có ô 🗑️ Xóa ở bên trái. Tick dòng muốn xóa, chỉnh số tiền/trạng thái nếu cần, rồi bấm Lưu tất cả thay đổi."
+            "💡 Tick ô 🗑️ ở dòng muốn xóa. Dùng nút 🗑️ Xóa dòng đã chọn để xóa riêng; dùng 💾 Lưu thay đổi để lưu trạng thái và số tiền."
         )
 
-        if st.button(
-            "💾 Lưu tất cả thay đổi",
-            type="primary",
-            key="save_booking_edits"
-        ):
+        bdel, bsave = st.columns([1, 1])
+
+        with bdel:
+            if st.button(
+                "🗑️ Xóa dòng đã chọn",
+                type="secondary",
+                key="delete_selected_booking"
+            ):
+                rows_to_delete = edited_booking[
+                    edited_booking["delete_row"] == True
+                ].copy()
+
+                deleted_ids = set(
+                    pd.to_numeric(
+                        rows_to_delete["id"],
+                        errors="coerce"
+                    )
+                    .dropna()
+                    .astype(int)
+                    .tolist()
+                )
+
+                if not deleted_ids:
+                    st.warning("⚠️ Chưa tick dòng nào để xóa.")
+                else:
+                    for booking_id in deleted_ids:
+                        cursor.execute(
+                            "DELETE FROM booking_services WHERE id = ?",
+                            (int(booking_id),)
+                        )
+                    conn.commit()
+                    st.success(f"🗑️ Đã xóa {len(deleted_ids)} dòng Booking.")
+                    st.rerun()
+
+        with bsave:
+            save_booking_clicked = st.button(
+                "💾 Lưu thay đổi",
+                type="primary",
+                key="save_booking_edits"
+            )
+
+        if save_booking_clicked:
 
             updated_count = 0
             deleted_count = 0
 
-            # Xóa đúng những dòng được tick ở cột 🗑️ Xóa.
-            rows_to_delete = edited_booking[
-                edited_booking["delete_row"] == True
-            ].copy()
-
-            deleted_ids = set(
-                pd.to_numeric(
-                    rows_to_delete["id"],
-                    errors="coerce"
-                )
-                .dropna()
-                .astype(int)
-                .tolist()
-            )
-
-            for booking_id in deleted_ids:
-                cursor.execute(
-                    "DELETE FROM booking_services WHERE id = ?",
-                    (int(booking_id),)
-                )
-                deleted_count += 1
-
-            # Cập nhật các dòng còn lại.
+            # Nút Lưu chỉ cập nhật dữ liệu; việc xóa đã được tách riêng
+            # sang nút 🗑️ Xóa dòng đã chọn.
             for _, row in edited_booking.iterrows():
 
                 if bool(row.get("delete_row", False)):
