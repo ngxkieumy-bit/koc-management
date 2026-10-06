@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS booking_services (
 """)
 
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS total_revenue_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_month TEXT UNIQUE,
+    target_revenue REAL DEFAULT 0,
+    note TEXT
+)
+""")
+
+
 # =========================================================
 # DATABASE MIGRATION
 # =========================================================
@@ -272,6 +282,17 @@ if page == "🏠 Dashboard":
         conn
     )
 
+    revenue_targets = pd.read_sql(
+        """
+        SELECT
+            target_month,
+            target_revenue,
+            note
+        FROM total_revenue_targets
+        """,
+        conn
+    )
+
     analytics_months = (
         set(analytics_all["report_month"].dropna().astype(str))
         if not analytics_all.empty
@@ -434,6 +455,150 @@ if page == "🏠 Dashboard":
             "Gói dịch vụ ròng = Tiền khách đã thanh toán - Tiền KOC đã thanh toán. "
             "Tổng doanh thu = Hoa hồng TAP + Gói dịch vụ ròng."
         )
+
+        # =====================================================
+        # TARGET DOANH THU THÁNG
+        # =====================================================
+
+        st.divider()
+        st.subheader("🎯 Target tổng doanh thu")
+
+        target_row = revenue_targets[
+            revenue_targets["target_month"].astype(str)
+            == selected_month
+        ]
+
+        saved_target = (
+            float(target_row.iloc[0]["target_revenue"])
+            if not target_row.empty
+            else 0.0
+        )
+
+        saved_target_note = (
+            str(target_row.iloc[0]["note"] or "")
+            if not target_row.empty
+            else ""
+        )
+
+        t1, t2 = st.columns([2, 1])
+
+        with t1:
+            target_revenue_input = st.number_input(
+                "Target tổng doanh thu",
+                min_value=0.0,
+                value=saved_target,
+                step=1000000.0,
+                format="%.0f",
+                key=f"dashboard_target_revenue_{selected_month}"
+            )
+
+        with t2:
+            target_note = st.text_input(
+                "Ghi chú",
+                value=saved_target_note,
+                key=f"dashboard_target_note_{selected_month}"
+            )
+
+        if st.button(
+            "💾 Lưu Target doanh thu",
+            type="primary",
+            key=f"save_dashboard_target_{selected_month}"
+        ):
+
+            cursor.execute(
+                """
+                INSERT INTO total_revenue_targets
+                (
+                    target_month,
+                    target_revenue,
+                    note
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT(target_month)
+                DO UPDATE SET
+                    target_revenue = excluded.target_revenue,
+                    note = excluded.note
+                """,
+                (
+                    selected_month,
+                    float(target_revenue_input),
+                    target_note.strip()
+                )
+            )
+
+            conn.commit()
+
+            st.success(
+                f"✅ Đã lưu Target {selected_month}: "
+                f"{money(target_revenue_input)}"
+            )
+
+            st.rerun()
+
+        target_revenue = float(target_revenue_input)
+
+        if target_revenue > 0:
+            achievement_rate = (
+                total_revenue
+                / target_revenue
+                * 100
+            )
+
+            remaining_revenue = max(
+                target_revenue - total_revenue,
+                0
+            )
+
+            excess_revenue = max(
+                total_revenue - target_revenue,
+                0
+            )
+        else:
+            achievement_rate = 0
+            remaining_revenue = 0
+            excess_revenue = 0
+
+        q1, q2, q3 = st.columns(3)
+
+        with q1:
+            st.metric(
+                "🎯 Target",
+                money(target_revenue)
+            )
+
+        with q2:
+            st.metric(
+                "📊 % đạt Target",
+                percent(achievement_rate)
+            )
+
+        with q3:
+            if target_revenue > 0 and remaining_revenue > 0:
+                st.metric(
+                    "⚠️ Còn thiếu",
+                    money(remaining_revenue)
+                )
+            elif target_revenue > 0:
+                st.metric(
+                    "✅ Vượt Target",
+                    money(excess_revenue)
+                )
+            else:
+                st.metric(
+                    "⚠️ Còn thiếu",
+                    "—"
+                )
+
+        if target_revenue > 0:
+            if total_revenue >= target_revenue:
+                st.success(
+                    f"🎉 Tổng doanh thu tháng {selected_month} đã đạt Target!"
+                )
+            else:
+                st.warning(
+                    f"📌 Cần thêm {money(remaining_revenue)} "
+                    "doanh thu để đạt Target."
+                )
 
         if not current.empty:
 
@@ -811,6 +976,26 @@ if page == "🏠 Dashboard":
             how="outer"
         )
 
+        revenue_target_summary = revenue_targets[
+            [
+                "target_month",
+                "target_revenue"
+            ]
+        ].copy()
+
+        revenue_target_summary = revenue_target_summary.rename(
+            columns={
+                "target_month": "report_month",
+                "target_revenue": "Revenue_Target"
+            }
+        )
+
+        monthly_summary = monthly_summary.merge(
+            revenue_target_summary,
+            on="report_month",
+            how="outer"
+        )
+
         for col in [
             "GMV",
             "AC",
@@ -818,7 +1003,8 @@ if page == "🏠 Dashboard":
             "Brand",
             "Booking",
             "KOC_paid",
-            "Booking_net"
+            "Booking_net",
+            "Revenue_Target"
         ]:
             if col not in monthly_summary.columns:
                 monthly_summary[col] = 0
@@ -834,6 +1020,27 @@ if page == "🏠 Dashboard":
         monthly_summary["Tổng doanh thu"] = (
             monthly_summary["AC"]
             + monthly_summary["Booking_net"]
+        )
+
+        monthly_summary["% đạt Target"] = 0.0
+
+        has_revenue_target = (
+            monthly_summary["Revenue_Target"] > 0
+        )
+
+        monthly_summary.loc[
+            has_revenue_target,
+            "% đạt Target"
+        ] = (
+            monthly_summary.loc[
+                has_revenue_target,
+                "Tổng doanh thu"
+            ]
+            / monthly_summary.loc[
+                has_revenue_target,
+                "Revenue_Target"
+            ]
+            * 100
         )
 
         monthly_summary["Tỷ lệ hoa hồng"] = (
@@ -856,6 +1063,8 @@ if page == "🏠 Dashboard":
                 "KOC_paid",
                 "Booking_net",
                 "Tổng doanh thu",
+                "Revenue_Target",
+                "% đạt Target",
                 "KOC",
                 "Brand",
                 "Tỷ lệ hoa hồng"
@@ -870,6 +1079,8 @@ if page == "🏠 Dashboard":
             "KOC đã thanh toán",
             "Doanh thu Booking ròng",
             "Tổng doanh thu",
+            "Target doanh thu",
+            "% đạt Target",
             "KOC",
             "Brand",
             "Tỷ lệ hoa hồng"
@@ -881,9 +1092,14 @@ if page == "🏠 Dashboard":
             "Booking đã thanh toán",
             "KOC đã thanh toán",
             "Doanh thu Booking ròng",
-            "Tổng doanh thu"
+            "Tổng doanh thu",
+            "Target doanh thu"
         ]:
             monthly_display[col] = monthly_display[col].apply(money)
+
+        monthly_display["% đạt Target"] = (
+            monthly_display["% đạt Target"].apply(percent)
+        )
 
         monthly_display["Tỷ lệ hoa hồng"] = (
             monthly_display["Tỷ lệ hoa hồng"].apply(percent)
