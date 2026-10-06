@@ -7,10 +7,18 @@ import pandas as pd
 # DATABASE
 # =========================================================
 
-conn = sqlite3.connect("koc_data.db", check_same_thread=False)
+conn = sqlite3.connect(
+    "koc_data.db",
+    check_same_thread=False
+)
+
 cursor = conn.cursor()
 
-# KOC table
+
+# =========================================================
+# CREATE TABLES
+# =========================================================
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS koc (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +31,7 @@ CREATE TABLE IF NOT EXISTS koc (
 )
 """)
 
-# Brand table
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS brands (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +42,22 @@ CREATE TABLE IF NOT EXISTS brands (
 )
 """)
 
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS analytics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_date TEXT,
+    report_month TEXT,
+    campaign_id TEXT,
+    campaign_name TEXT,
+    creator_name TEXT,
+    store_name TEXT,
+    gmv REAL DEFAULT 0,
+    ac REAL DEFAULT 0
+)
+""")
+
+
 conn.commit()
 
 
@@ -42,7 +66,7 @@ conn.commit()
 # =========================================================
 
 st.set_page_config(
-    page_title="KOC Management",
+    page_title="KOC Management & Analytics",
     page_icon="📊",
     layout="wide"
 )
@@ -53,7 +77,10 @@ st.set_page_config(
 # =========================================================
 
 st.title("📊 KOC Management & Analytics")
-st.write("Hệ thống quản lý KOC/KOL và phân tích dữ liệu")
+
+st.write(
+    "Hệ thống quản lý KOC/KOL, Brand và phân tích dữ liệu TikTok"
+)
 
 st.divider()
 
@@ -67,9 +94,22 @@ page = st.sidebar.radio(
     [
         "🏠 Dashboard",
         "👤 KOC Database",
-        "🏷️ Brand Database"
+        "🏷️ Brand Database",
+        "📊 Monthly Analytics"
     ]
 )
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def money(value):
+    return f"{value:,.0f} đ"
+
+
+def percent(value):
+    return f"{value:.2f}%"
 
 
 # =========================================================
@@ -83,18 +123,16 @@ if page == "🏠 Dashboard":
         conn
     ).iloc[0]["total"]
 
-    total_phone = pd.read_sql(
-        """
-        SELECT COUNT(*) AS total
-        FROM koc
-        WHERE phone IS NOT NULL
-        AND phone != ''
-        """,
+    total_brand = pd.read_sql(
+        "SELECT COUNT(*) AS total FROM brands",
         conn
     ).iloc[0]["total"]
 
-    total_brand = pd.read_sql(
-        "SELECT COUNT(*) AS total FROM brands",
+    total_months = pd.read_sql(
+        """
+        SELECT COUNT(DISTINCT report_month) AS total
+        FROM analytics
+        """,
         conn
     ).iloc[0]["total"]
 
@@ -114,77 +152,58 @@ if page == "🏠 Dashboard":
 
     with col3:
         st.metric(
-            "📱 KOC có SĐT",
-            int(total_phone)
+            "📅 Tháng dữ liệu",
+            int(total_months)
         )
 
-    st.success("🚀 Hệ thống KOC đang hoạt động.")
+    st.success(
+        "🚀 Hệ thống KOC đang hoạt động."
+    )
 
     st.divider()
 
-    # =====================================================
-    # KOC OVERVIEW
-    # =====================================================
+    st.subheader("📊 Analytics tổng quan")
 
-    st.subheader("📈 Tổng quan KOC")
-
-    overview = pd.read_sql(
+    analytics_df = pd.read_sql(
         """
         SELECT
-            category AS "Ngành hàng",
-            COUNT(*) AS "Số KOC"
-        FROM koc
-        GROUP BY category
-        ORDER BY COUNT(*) DESC
+            report_month,
+            SUM(gmv) AS gmv,
+            SUM(ac) AS ac
+        FROM analytics
+        GROUP BY report_month
+        ORDER BY report_month DESC
         """,
         conn
     )
 
-    if not overview.empty:
-        st.dataframe(
-            overview,
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("Chưa có dữ liệu KOC.")
+    if analytics_df.empty:
 
-    st.divider()
-
-    # =====================================================
-    # BRAND OVERVIEW
-    # =====================================================
-
-    st.subheader("🏷️ Tổng quan Brand")
-
-    brand_overview = pd.read_sql(
-        """
-        SELECT
-            brand_name AS "Brand",
-            commission AS "Commission (%)",
-            target_gmv AS "GMV mục tiêu"
-        FROM brands
-        ORDER BY target_gmv DESC
-        """,
-        conn
-    )
-
-    if not brand_overview.empty:
-
-        brand_overview["TAP dự kiến nhận"] = (
-            brand_overview["GMV mục tiêu"]
-            * brand_overview["Commission (%)"]
-            / 100
-        )
-
-        st.dataframe(
-            brand_overview,
-            use_container_width=True,
-            hide_index=True
+        st.info(
+            "Chưa có dữ liệu Analytics. "
+            "Vào 📊 Monthly Analytics để upload file TikTok."
         )
 
     else:
-        st.info("Chưa có dữ liệu Brand.")
+
+        analytics_df["AC / GMV (%)"] = (
+            analytics_df["ac"]
+            / analytics_df["gmv"]
+            * 100
+        ).fillna(0)
+
+        analytics_df.columns = [
+            "Tháng",
+            "GMV",
+            "AC",
+            "AC / GMV (%)"
+        ]
+
+        st.dataframe(
+            analytics_df,
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # =========================================================
@@ -206,7 +225,7 @@ elif page == "👤 KOC Database":
 
 
     # =====================================================
-    # TAB 1 - ADD KOC
+    # ADD KOC
     # =====================================================
 
     with tab1:
@@ -301,12 +320,12 @@ elif page == "👤 KOC Database":
                 except sqlite3.IntegrityError:
 
                     st.warning(
-                        f"{username} đã tồn tại trong database."
+                        f"{username} đã tồn tại."
                     )
 
 
     # =====================================================
-    # TAB 2 - BULK CHECK
+    # BULK CHECK
     # =====================================================
 
     with tab2:
@@ -329,7 +348,7 @@ elif page == "👤 KOC Database":
             if not usernames.strip():
 
                 st.warning(
-                    "Vui lòng nhập ít nhất 1 username."
+                    "Vui lòng nhập username."
                 )
 
             else:
@@ -441,35 +460,15 @@ elif page == "👤 KOC Database":
                         not_found_count
                     )
 
-                st.divider()
-
                 st.dataframe(
                     output_df,
                     use_container_width=True,
                     hide_index=True
                 )
 
-                phone_list = output_df[
-                    output_df["Trạng thái"] == "✅ ĐÃ CÓ"
-                ]["Số điện thoại"]
-
-                phone_text = "\n".join(
-                    str(phone)
-                    for phone in phone_list
-                    if str(phone).strip()
-                )
-
-                if phone_text:
-
-                    st.text_area(
-                        "📱 Danh sách SĐT",
-                        phone_text,
-                        height=150
-                    )
-
 
     # =====================================================
-    # TAB 3 - IMPORT EXCEL
+    # IMPORT KOC
     # =====================================================
 
     with tab3:
@@ -479,24 +478,13 @@ elif page == "👤 KOC Database":
         )
 
         st.write(
-            "File Excel cần có ít nhất cột:"
-        )
-
-        st.markdown(
-            "**username** và **phone**"
-        )
-
-        st.write(
-            "Có thể thêm:"
-        )
-
-        st.markdown(
-            "**name, follower, category, note**"
+            "Cần có: **username, phone**"
         )
 
         uploaded_file = st.file_uploader(
             "Chọn file Excel",
-            type=["xlsx", "xls"]
+            type=["xlsx", "xls"],
+            key="koc_upload"
         )
 
         if uploaded_file is not None:
@@ -505,10 +493,6 @@ elif page == "👤 KOC Database":
 
                 import_df = pd.read_excel(
                     uploaded_file
-                )
-
-                st.write(
-                    "📋 Preview dữ liệu:"
                 )
 
                 st.dataframe(
@@ -531,10 +515,8 @@ elif page == "👤 KOC Database":
                 if missing_columns:
 
                     st.error(
-                        "File đang thiếu cột: "
-                        + ", ".join(
-                            missing_columns
-                        )
+                        "Thiếu cột: "
+                        + ", ".join(missing_columns)
                     )
 
                 else:
@@ -573,10 +555,7 @@ elif page == "👤 KOC Database":
                                 phone = ""
 
                             name_value = str(
-                                row.get(
-                                    "name",
-                                    ""
-                                )
+                                row.get("name", "")
                             ).strip()
 
                             if name_value == "nan":
@@ -677,9 +656,9 @@ elif page == "👤 KOC Database":
 
                         st.success(
                             f"Import thành công! "
-                            f"➕ {added} KOC mới | "
-                            f"🔄 {updated} KOC cập nhật | "
-                            f"⚠️ {skipped} dòng bỏ qua"
+                            f"➕ {added} mới | "
+                            f"🔄 {updated} cập nhật | "
+                            f"⚠️ {skipped} bỏ qua"
                         )
 
             except Exception as e:
@@ -690,7 +669,7 @@ elif page == "👤 KOC Database":
 
 
     # =====================================================
-    # TAB 4 - KOC LIST
+    # KOC LIST
     # =====================================================
 
     with tab4:
@@ -721,7 +700,7 @@ elif page == "👤 KOC Database":
 
             search = st.text_input(
                 "🔎 Tìm KOC",
-                placeholder="Username / tên / số điện thoại"
+                placeholder="Username / tên / SĐT"
             )
 
         with col2:
@@ -780,75 +759,10 @@ elif page == "👤 KOC Database":
                 == category_filter
             ]
 
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            st.metric(
-                "👤 Tổng KOC",
-                len(all_koc)
-            )
-
-        with col2:
-
-            st.metric(
-                "🔎 Kết quả",
-                len(filtered)
-            )
-
-        with col3:
-
-            phone_count = (
-                filtered["phone"]
-                .fillna("")
-                .astype(str)
-                .str.strip()
-                .ne("")
-                .sum()
-            )
-
-            st.metric(
-                "📱 Có SĐT",
-                int(phone_count)
-            )
-
-        st.divider()
-
-        display_df = filtered[
-            [
-                "username",
-                "phone",
-                "name",
-                "follower",
-                "category",
-                "note"
-            ]
-        ].copy()
-
-        display_df.columns = [
-            "Username",
-            "Số điện thoại",
-            "Tên KOC",
-            "Follower",
-            "Ngành hàng",
-            "Ghi chú"
-        ]
-
         st.dataframe(
-            display_df,
+            filtered,
             use_container_width=True,
             hide_index=True
-        )
-
-        csv = filtered.to_csv(
-            index=False
-        ).encode("utf-8-sig")
-
-        st.download_button(
-            "📥 Xuất danh sách KOC",
-            data=csv,
-            file_name="koc_database.csv",
-            mime="text/csv"
         )
 
 
@@ -870,7 +784,7 @@ elif page == "🏷️ Brand Database":
 
 
     # =====================================================
-    # TAB 1 - ADD BRAND
+    # ADD BRAND
     # =====================================================
 
     with tab1:
@@ -879,7 +793,7 @@ elif page == "🏷️ Brand Database":
 
         brand_name = st.text_input(
             "Tên Brand",
-            placeholder="Ví dụ: Maison Lena"
+            placeholder="Maison Lena"
         )
 
         commission = st.number_input(
@@ -898,8 +812,7 @@ elif page == "🏷️ Brand Database":
         )
 
         note = st.text_area(
-            "Ghi chú",
-            placeholder="Ví dụ: Beauty / TikTok Shop / Campaign tháng 10"
+            "Ghi chú"
         )
 
         if st.button(
@@ -952,7 +865,7 @@ elif page == "🏷️ Brand Database":
 
 
     # =====================================================
-    # TAB 2 - IMPORT BRAND
+    # IMPORT BRAND
     # =====================================================
 
     with tab2:
@@ -962,19 +875,7 @@ elif page == "🏷️ Brand Database":
         )
 
         st.write(
-            "File Excel cần có:"
-        )
-
-        st.markdown(
-            "**brand_name, commission, target_gmv**"
-        )
-
-        st.write(
-            "Có thể thêm:"
-        )
-
-        st.markdown(
-            "**note**"
+            "Cần có: **brand_name, commission, target_gmv**"
         )
 
         uploaded_brand_file = st.file_uploader(
@@ -989,10 +890,6 @@ elif page == "🏷️ Brand Database":
 
                 brand_df = pd.read_excel(
                     uploaded_brand_file
-                )
-
-                st.write(
-                    "📋 Preview:"
                 )
 
                 st.dataframe(
@@ -1016,10 +913,8 @@ elif page == "🏷️ Brand Database":
                 if missing_columns:
 
                     st.error(
-                        "File đang thiếu cột: "
-                        + ", ".join(
-                            missing_columns
-                        )
+                        "Thiếu cột: "
+                        + ", ".join(missing_columns)
                     )
 
                 else:
@@ -1031,7 +926,6 @@ elif page == "🏷️ Brand Database":
 
                         added = 0
                         updated = 0
-                        skipped = 0
 
                         for _, row in brand_df.iterrows():
 
@@ -1039,12 +933,7 @@ elif page == "🏷️ Brand Database":
                                 row["brand_name"]
                             ).strip()
 
-                            if (
-                                not brand_name
-                                or brand_name == "nan"
-                            ):
-
-                                skipped += 1
+                            if not brand_name:
                                 continue
 
                             commission_value = row[
@@ -1066,14 +955,8 @@ elif page == "🏷️ Brand Database":
                                 target_gmv_value = 0
 
                             note_value = str(
-                                row.get(
-                                    "note",
-                                    ""
-                                )
+                                row.get("note", "")
                             ).strip()
-
-                            if note_value == "nan":
-                                note_value = ""
 
                             existing = cursor.execute(
                                 """
@@ -1140,20 +1023,19 @@ elif page == "🏷️ Brand Database":
 
                         st.success(
                             f"Import thành công! "
-                            f"➕ {added} Brand mới | "
-                            f"🔄 {updated} Brand cập nhật | "
-                            f"⚠️ {skipped} dòng bỏ qua"
+                            f"➕ {added} mới | "
+                            f"🔄 {updated} cập nhật"
                         )
 
             except Exception as e:
 
                 st.error(
-                    f"Không thể đọc file: {e}"
+                    f"Lỗi: {e}"
                 )
 
 
     # =====================================================
-    # TAB 3 - BRAND LIST
+    # BRAND LIST
     # =====================================================
 
     with tab3:
@@ -1199,36 +1081,6 @@ elif page == "🏷️ Brand Database":
                 )
             ]
 
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            st.metric(
-                "🏷️ Tổng Brand",
-                len(all_brands)
-            )
-
-        with col2:
-
-            st.metric(
-                "🔎 Kết quả",
-                len(filtered_brands)
-            )
-
-        with col3:
-
-            total_target = (
-                filtered_brands["target_gmv"]
-                .sum()
-            )
-
-            st.metric(
-                "🎯 Tổng GMV mục tiêu",
-                f"{total_target:,.0f} đ"
-            )
-
-        st.divider()
-
         display_brand = filtered_brands.copy()
 
         display_brand["TAP dự kiến nhận"] = (
@@ -1237,17 +1089,8 @@ elif page == "🏷️ Brand Database":
             / 100
         )
 
-        display_brand = display_brand[
-            [
-                "brand_name",
-                "commission",
-                "target_gmv",
-                "TAP dự kiến nhận",
-                "note"
-            ]
-        ]
-
         display_brand.columns = [
+            "ID",
             "Brand",
             "Commission (%)",
             "GMV mục tiêu",
@@ -1261,13 +1104,577 @@ elif page == "🏷️ Brand Database":
             hide_index=True
         )
 
-        csv = filtered_brands.to_csv(
+
+# =========================================================
+# MONTHLY ANALYTICS
+# =========================================================
+
+elif page == "📊 Monthly Analytics":
+
+    st.header("📊 Monthly Analytics")
+
+    st.write(
+        "Upload báo cáo TikTok để tự động cập nhật GMV và hoa hồng TAP."
+    )
+
+    st.info(
+        "📌 Hệ thống lấy: "
+        "M = GMV nhờ nhà sáng tạo | "
+        "AC = Hoa hồng ước tính của đối tác liên kết | "
+        "L = Brand | "
+        "F = KOC/NST | "
+        "A = Ngày"
+    )
+
+    st.divider()
+
+
+    # =====================================================
+    # UPLOAD
+    # =====================================================
+
+    st.subheader("📥 Upload báo cáo TikTok")
+
+    analytics_file = st.file_uploader(
+        "Chọn file Custom Report TikTok",
+        type=["xlsx", "xls"],
+        key="analytics_upload"
+    )
+
+    if analytics_file is not None:
+
+        try:
+
+            raw_df = pd.read_excel(
+                analytics_file
+            )
+
+            # Clean column names
+            raw_df.columns = [
+                str(col).strip()
+                for col in raw_df.columns
+            ]
+
+            if len(raw_df.columns) < 41:
+
+                st.error(
+                    "File không đủ 41 cột theo cấu trúc báo cáo TikTok."
+                )
+
+            else:
+
+                st.success(
+                    f"Đã đọc {len(raw_df):,} dòng dữ liệu."
+                )
+
+                # =================================================
+                # MAP THE TIKTOK COLUMNS BY EXCEL POSITION
+                # =================================================
+
+                date_col = raw_df.iloc[:, 0]
+
+                campaign_id_col = raw_df.iloc[:, 2]
+
+                campaign_name_col = raw_df.iloc[:, 3]
+
+                creator_col = raw_df.iloc[:, 5]
+
+                store_col = raw_df.iloc[:, 11]
+
+                # M = column 13
+                gmv_col = raw_df.iloc[:, 12]
+
+                # AC = column 29
+                ac_col = raw_df.iloc[:, 28]
+
+
+                # =================================================
+                # PREPARE DATA
+                # =================================================
+
+                analytics_upload = pd.DataFrame()
+
+                analytics_upload["report_date"] = pd.to_datetime(
+                    date_col,
+                    errors="coerce"
+                )
+
+                analytics_upload["campaign_id"] = (
+                    campaign_id_col
+                    .fillna("")
+                    .astype(str)
+                )
+
+                analytics_upload["campaign_name"] = (
+                    campaign_name_col
+                    .fillna("")
+                    .astype(str)
+                )
+
+                analytics_upload["creator_name"] = (
+                    creator_col
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                )
+
+                analytics_upload["store_name"] = (
+                    store_col
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                )
+
+                analytics_upload["gmv"] = pd.to_numeric(
+                    gmv_col,
+                    errors="coerce"
+                ).fillna(0)
+
+                analytics_upload["ac"] = pd.to_numeric(
+                    ac_col,
+                    errors="coerce"
+                ).fillna(0)
+
+                analytics_upload = analytics_upload[
+                    analytics_upload["report_date"].notna()
+                ].copy()
+
+                analytics_upload["report_month"] = (
+                    analytics_upload["report_date"]
+                    .dt.to_period("M")
+                    .astype(str)
+                )
+
+                # =================================================
+                # PREVIEW
+                # =================================================
+
+                st.subheader("👀 Preview dữ liệu")
+
+                preview = analytics_upload[
+                    [
+                        "report_date",
+                        "report_month",
+                        "creator_name",
+                        "store_name",
+                        "gmv",
+                        "ac"
+                    ]
+                ].head(10).copy()
+
+                preview.columns = [
+                    "Ngày",
+                    "Tháng",
+                    "KOC/NST",
+                    "Brand",
+                    "GMV",
+                    "AC"
+                ]
+
+                st.dataframe(
+                    preview,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                # =================================================
+                # MONTHS IN FILE
+                # =================================================
+
+                months_in_file = sorted(
+                    analytics_upload[
+                        "report_month"
+                    ].unique()
+                )
+
+                st.write(
+                    "📅 Tháng phát hiện trong file:",
+                    ", ".join(months_in_file)
+                )
+
+                # =================================================
+                # IMPORT
+                # =================================================
+
+                if st.button(
+                    "🚀 Import dữ liệu Analytics",
+                    type="primary"
+                ):
+
+                    added = 0
+
+                    for _, row in analytics_upload.iterrows():
+
+                        cursor.execute(
+                            """
+                            INSERT INTO analytics
+                            (
+                                report_date,
+                                report_month,
+                                campaign_id,
+                                campaign_name,
+                                creator_name,
+                                store_name,
+                                gmv,
+                                ac
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                row["report_date"].strftime(
+                                    "%Y-%m-%d"
+                                ),
+                                row["report_month"],
+                                row["campaign_id"],
+                                row["campaign_name"],
+                                row["creator_name"],
+                                row["store_name"],
+                                float(row["gmv"]),
+                                float(row["ac"])
+                            )
+                        )
+
+                        added += 1
+
+                    conn.commit()
+
+                    st.success(
+                        f"Import thành công {added:,} dòng!"
+                    )
+
+                    st.rerun()
+
+        except Exception as e:
+
+            st.error(
+                f"Không thể đọc file: {e}"
+            )
+
+
+    # =====================================================
+    # ANALYTICS DATA
+    # =====================================================
+
+    analytics_data = pd.read_sql(
+        """
+        SELECT *
+        FROM analytics
+        """,
+        conn
+    )
+
+
+    if analytics_data.empty:
+
+        st.warning(
+            "Chưa có dữ liệu Analytics. "
+            "Hãy upload file TikTok ở trên."
+        )
+
+    else:
+
+        st.divider()
+
+        st.subheader(
+            "📊 Dashboard"
+        )
+
+        # =====================================================
+        # FILTERS
+        # =====================================================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            month_options = sorted(
+                analytics_data[
+                    "report_month"
+                ].dropna().unique(),
+                reverse=True
+            )
+
+            selected_month = st.selectbox(
+                "📅 Chọn tháng",
+                month_options
+            )
+
+        with col2:
+
+            brand_options = [
+                "Tất cả"
+            ] + sorted(
+                analytics_data[
+                    analytics_data["report_month"]
+                    == selected_month
+                ]["store_name"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+            selected_brand = st.selectbox(
+                "🏷️ Chọn Brand",
+                brand_options
+            )
+
+
+        # =====================================================
+        # FILTER DATA
+        # =====================================================
+
+        dashboard_df = analytics_data[
+            analytics_data["report_month"]
+            == selected_month
+        ].copy()
+
+        if selected_brand != "Tất cả":
+
+            dashboard_df = dashboard_df[
+                dashboard_df["store_name"]
+                == selected_brand
+            ]
+
+
+        # =====================================================
+        # KPI INPUT
+        # =====================================================
+
+        st.divider()
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        total_gmv = dashboard_df[
+            "gmv"
+        ].sum()
+
+        total_ac = dashboard_df[
+            "ac"
+        ].sum()
+
+        ac_percent = (
+            total_ac
+            / total_gmv
+            * 100
+            if total_gmv != 0
+            else 0
+        )
+
+        with col1:
+
+            st.metric(
+                "💰 Tổng GMV",
+                money(total_gmv)
+            )
+
+        with col2:
+
+            st.metric(
+                "💵 Tổng AC",
+                money(total_ac)
+            )
+
+        with col3:
+
+            st.metric(
+                "📊 AC / GMV",
+                percent(ac_percent)
+            )
+
+        with col4:
+
+            kpi = st.number_input(
+                "🎯 KPI",
+                min_value=0.0,
+                value=10000000.0,
+                step=1000000.0
+            )
+
+            achievement = (
+                total_ac
+                / kpi
+                * 100
+                if kpi > 0
+                else 0
+            )
+
+        st.metric(
+            "📈 % đạt KPI",
+            percent(achievement)
+        )
+
+
+        # =====================================================
+        # TOP BRAND
+        # =====================================================
+
+        st.divider()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.subheader(
+                "🏆 Top Brand theo AC"
+            )
+
+            top_brand = (
+                dashboard_df
+                .groupby("store_name", as_index=False)
+                .agg(
+                    GMV=("gmv", "sum"),
+                    AC=("ac", "sum")
+                )
+                .sort_values(
+                    "AC",
+                    ascending=False
+                )
+                .head(10)
+            )
+
+            if not top_brand.empty:
+
+                top_brand["AC / GMV (%)"] = (
+                    top_brand["AC"]
+                    / top_brand["GMV"]
+                    * 100
+                ).fillna(0)
+
+                st.dataframe(
+                    top_brand,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+        # =====================================================
+        # TOP KOC
+        # =====================================================
+
+        with col2:
+
+            st.subheader(
+                "👑 Top KOC/NST theo AC"
+            )
+
+            top_creator = (
+                dashboard_df
+                .groupby(
+                    "creator_name",
+                    as_index=False
+                )
+                .agg(
+                    GMV=("gmv", "sum"),
+                    AC=("ac", "sum")
+                )
+                .sort_values(
+                    "AC",
+                    ascending=False
+                )
+                .head(10)
+            )
+
+            st.dataframe(
+                top_creator,
+                use_container_width=True,
+                hide_index=True
+            )
+
+
+        # =====================================================
+        # BRAND ANALYTICS
+        # =====================================================
+
+        st.divider()
+
+        st.subheader(
+            "📊 Phân tích Brand"
+        )
+
+        brand_analysis = (
+            dashboard_df
+            .groupby(
+                "store_name",
+                as_index=False
+            )
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum"),
+                KOC=("creator_name", "nunique")
+            )
+        )
+
+        brand_analysis["AC / GMV (%)"] = (
+            brand_analysis["AC"]
+            / brand_analysis["GMV"]
+            * 100
+        ).fillna(0)
+
+        brand_analysis = brand_analysis.sort_values(
+            "AC",
+            ascending=False
+        )
+
+        st.dataframe(
+            brand_analysis,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        # =====================================================
+        # MONTHLY SUMMARY
+        # =====================================================
+
+        st.divider()
+
+        st.subheader(
+            "📅 Tổng quan các tháng"
+        )
+
+        monthly_summary = (
+            analytics_data
+            .groupby(
+                "report_month",
+                as_index=False
+            )
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum"),
+                KOC=("creator_name", "nunique"),
+                Brand=("store_name", "nunique")
+            )
+        )
+
+        monthly_summary["AC / GMV (%)"] = (
+            monthly_summary["AC"]
+            / monthly_summary["GMV"]
+            * 100
+        ).fillna(0)
+
+        monthly_summary = monthly_summary.sort_values(
+            "report_month",
+            ascending=False
+        )
+
+        st.dataframe(
+            monthly_summary,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        # =====================================================
+        # DOWNLOAD
+        # =====================================================
+
+        csv = dashboard_df.to_csv(
             index=False
         ).encode("utf-8-sig")
 
         st.download_button(
-            "📥 Xuất danh sách Brand",
+            "📥 Xuất dữ liệu tháng",
             data=csv,
-            file_name="brand_database.csv",
+            file_name=f"analytics_{selected_month}.csv",
             mime="text/csv"
         )
