@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS booking_services (
     paid INTEGER DEFAULT 0,
     paid_amount REAL DEFAULT 0,
     koc_paid_amount REAL DEFAULT 0,
+    hop_dong_mua TEXT,
+    unc_mua TEXT,
+    hop_dong_ban TEXT,
+    unc_ban TEXT,
     note TEXT
 )
 """)
@@ -135,13 +139,19 @@ booking_columns = [
     ).fetchall()
 ]
 
-if "koc_paid_amount" not in booking_columns:
-    cursor.execute(
-        """
-        ALTER TABLE booking_services
-        ADD COLUMN koc_paid_amount REAL DEFAULT 0
-        """
-    )
+booking_migrations = {
+    "koc_paid_amount": "REAL DEFAULT 0",
+    "hop_dong_mua": "TEXT",
+    "unc_mua": "TEXT",
+    "hop_dong_ban": "TEXT",
+    "unc_ban": "TEXT",
+}
+
+for col_name, col_type in booking_migrations.items():
+    if col_name not in booking_columns:
+        cursor.execute(
+            f"ALTER TABLE booking_services ADD COLUMN {col_name} {col_type}"
+        )
 
 conn.commit()
 
@@ -280,16 +290,94 @@ st.markdown(
     <style>
     .stApp {{ background: {bg_css} center center / cover fixed no-repeat; }}
     .stApp::before {{ content: ""; position: fixed; inset: 0; background: rgba(255,248,250,.82); z-index:-1; }}
-    [data-testid="stSidebar"] {{ background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,244,247,.97)); border-right:1px solid #f0d6dd; }}
-    .app-logo-wrap {{ display:flex; align-items:center; gap:12px; padding:8px 4px 18px; border-bottom:1px solid #f2dbe1; margin-bottom:16px; }}
-    .app-logo {{ width:54px; height:54px; object-fit:contain; border-radius:14px; background:white; border:1px solid #f0d6dd; padding:5px; }}
-    .app-logo-title {{ font-size:18px; font-weight:850; letter-spacing:.02em; line-height:1.05; color:#7e3145; }}
-    .app-logo-sub {{ font-size:11px; color:#8b777c; margin-top:4px; }}
-    .menu-label {{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a17984; font-weight:700; margin:8px 0 6px 4px; }}
-    div.stButton > button {{ border-radius:14px; border:1px solid transparent; background:rgba(255,255,255,.42); color:#4b343a; font-weight:600; min-height:44px; box-shadow:none; transition:all .18s ease; }}
-    div.stButton > button:hover {{ border-color:#edc1cc; color:#a83f58; background:#fff2f5; transform:translateX(2px); }}
-    .nav-active button {{ background:linear-gradient(90deg,#f8dbe3,#fdeef2) !important; border-color:#efc2cd !important; color:#9e3b55 !important; font-weight:800 !important; box-shadow:0 4px 12px rgba(170,75,100,.08) !important; }}
-    .nav-child button {{ text-align:left !important; padding-left:16px !important; font-size:13px !important; background:transparent !important; border-color:transparent !important; min-height:38px !important; }}
+    /* ===== SIDEBAR MENU: XÁM ĐẬM + CHỮ TRẮNG ===== */
+    [data-testid="stSidebar"] {{
+        background: #454A50 !important;
+        border-right: 1px solid #34383D !important;
+    }}
+    [data-testid="stSidebar"] > div:first-child {{
+        background: #454A50 !important;
+    }}
+    .app-logo-wrap {{
+        display:flex;
+        align-items:center;
+        gap:12px;
+        padding:8px 4px 18px;
+        border-bottom:1px solid rgba(255,255,255,.16);
+        margin-bottom:18px;
+    }}
+    .app-logo {{
+        width:54px;
+        height:54px;
+        object-fit:contain;
+        border-radius:14px;
+        background:white;
+        border:1px solid rgba(255,255,255,.35);
+        padding:5px;
+    }}
+    .app-logo-title {{
+        font-size:18px;
+        font-weight:900;
+        letter-spacing:.02em;
+        line-height:1.05;
+        color:#ffffff;
+    }}
+    .app-logo-sub {{
+        font-size:11px;
+        color:rgba(255,255,255,.72);
+        margin-top:4px;
+    }}
+    .menu-label {{
+        font-size:11px;
+        text-transform:uppercase;
+        letter-spacing:.10em;
+        color:rgba(255,255,255,.62);
+        font-weight:800;
+        margin:8px 0 10px 4px;
+    }}
+    div.stButton {{
+        margin-bottom:8px !important;
+    }}
+    div.stButton > button {{
+        border-radius:12px;
+        border:1px solid transparent;
+        background:transparent !important;
+        color:#ffffff !important;
+        font-weight:800 !important;
+        min-height:44px;
+        box-shadow:none;
+        transition:all .18s ease;
+    }}
+    div.stButton > button:hover {{
+        border-color:rgba(255,255,255,.20) !important;
+        color:#ffffff !important;
+        background:rgba(255,255,255,.10) !important;
+        transform:translateX(2px);
+    }}
+    .nav-active button {{
+        background:rgba(255,255,255,.16) !important;
+        border-color:rgba(255,255,255,.22) !important;
+        color:#ffffff !important;
+        font-weight:900 !important;
+        box-shadow:0 4px 14px rgba(0,0,0,.14) !important;
+    }}
+    .nav-child {{
+        margin-top:-4px !important;
+    }}
+    .nav-child button {{
+        text-align:left !important;
+        padding-left:22px !important;
+        font-size:13px !important;
+        background:transparent !important;
+        border-color:transparent !important;
+        min-height:38px !important;
+        color:rgba(255,255,255,.82) !important;
+        font-weight:700 !important;
+    }}
+    .nav-child button:hover {{
+        background:rgba(255,255,255,.08) !important;
+        color:#ffffff !important;
+    }}
     [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:12px 13px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); min-width:0; }}
     [data-testid="stMetricLabel"] {{ font-size:0.78rem !important; line-height:1.15 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
     [data-testid="stMetricValue"] {{ font-size:22px !important; line-height:1.15 !important; white-space:nowrap !important; overflow:visible !important; text-overflow:clip !important; letter-spacing:-0.4px; }}
@@ -335,7 +423,8 @@ with st.sidebar:
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+    # Khoảng cách đều giữa nhóm Tổng quan và nhóm menu chính bên dưới
+    st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
 
     for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("⚙  Cài đặt","settings")]:
         active = st.session_state.page == key
@@ -405,6 +494,10 @@ if page == "dashboard":
             paid,
             paid_amount,
             koc_paid_amount,
+            hop_dong_mua,
+            unc_mua,
+            hop_dong_ban,
+            unc_ban,
             note
         FROM booking_services
         """,
@@ -2589,6 +2682,28 @@ elif page == "booking":
                     format="%.0f"
                 )
 
+                st.markdown("**📄 Chứng từ / hồ sơ**")
+
+                hop_dong_mua = st.text_input(
+                    "Hợp đồng mua",
+                    placeholder="Nhập số HĐ hoặc link file..."
+                )
+
+                unc_mua = st.text_input(
+                    "UNC mua",
+                    placeholder="Nhập số UNC hoặc link file..."
+                )
+
+                hop_dong_ban = st.text_input(
+                    "Hợp đồng bán",
+                    placeholder="Nhập số HĐ hoặc link file..."
+                )
+
+                unc_ban = st.text_input(
+                    "UNC bán",
+                    placeholder="Nhập số UNC hoặc link file..."
+                )
+
                 st.caption(
                     "Doanh thu Booking ròng = Brand đã thanh toán - KOC đã thanh toán."
                 )
@@ -2631,9 +2746,13 @@ elif page == "booking":
                         paid,
                         paid_amount,
                         koc_paid_amount,
+                        hop_dong_mua,
+                        unc_mua,
+                        hop_dong_ban,
+                        unc_ban,
                         note
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         booking_month,
@@ -2649,6 +2768,10 @@ elif page == "booking":
                             float(koc_paid_amount),
                             float(contract_fee)
                         ),
+                        hop_dong_mua.strip(),
+                        unc_mua.strip(),
+                        hop_dong_ban.strip(),
+                        unc_ban.strip(),
                         note.strip()
                     )
                 )
@@ -2853,6 +2976,10 @@ elif page == "booking":
                 "paid",
                 "paid_amount",
                 "koc_paid_amount",
+                "hop_dong_mua",
+                "unc_mua",
+                "hop_dong_ban",
+                "unc_ban",
                 "note"
             ]
         ].copy()
@@ -2927,6 +3054,22 @@ elif page == "booking":
                     "👤 KOC đã thanh toán",
                     min_value=0,
                     format="%,.0f"
+                ),
+                "hop_dong_mua": st.column_config.TextColumn(
+                    "📄 Hợp đồng mua",
+                    help="Số hợp đồng hoặc link file."
+                ),
+                "unc_mua": st.column_config.TextColumn(
+                    "🧾 UNC mua",
+                    help="Số UNC hoặc link file."
+                ),
+                "hop_dong_ban": st.column_config.TextColumn(
+                    "📄 Hợp đồng bán",
+                    help="Số hợp đồng hoặc link file."
+                ),
+                "unc_ban": st.column_config.TextColumn(
+                    "🧾 UNC bán",
+                    help="Số UNC hoặc link file."
                 ),
                 "note": st.column_config.TextColumn(
                     "Ghi chú"
@@ -3037,6 +3180,26 @@ elif page == "booking":
                     )
                 )
 
+                hop_dong_mua_value = str(
+                    row["hop_dong_mua"]
+                    if pd.notna(row["hop_dong_mua"])
+                    else ""
+                )
+                unc_mua_value = str(
+                    row["unc_mua"]
+                    if pd.notna(row["unc_mua"])
+                    else ""
+                )
+                hop_dong_ban_value = str(
+                    row["hop_dong_ban"]
+                    if pd.notna(row["hop_dong_ban"])
+                    else ""
+                )
+                unc_ban_value = str(
+                    row["unc_ban"]
+                    if pd.notna(row["unc_ban"])
+                    else ""
+                )
                 note_value = str(
                     row["note"]
                     if pd.notna(row["note"])
@@ -3048,6 +3211,10 @@ elif page == "booking":
                     or paid_value != bool(original_row["paid"])
                     or paid_value_amount != float(original_row["paid_amount"])
                     or koc_value_amount != float(original_row["koc_paid_amount"])
+                    or hop_dong_mua_value != str(original_row["hop_dong_mua"] or "")
+                    or unc_mua_value != str(original_row["unc_mua"] or "")
+                    or hop_dong_ban_value != str(original_row["hop_dong_ban"] or "")
+                    or unc_ban_value != str(original_row["unc_ban"] or "")
                     or note_value != str(original_row["note"] or "")
                 )
 
@@ -3060,6 +3227,10 @@ elif page == "booking":
                             paid = ?,
                             paid_amount = ?,
                             koc_paid_amount = ?,
+                            hop_dong_mua = ?,
+                            unc_mua = ?,
+                            hop_dong_ban = ?,
+                            unc_ban = ?,
                             note = ?
                         WHERE id = ?
                         """,
@@ -3068,6 +3239,10 @@ elif page == "booking":
                             1 if paid_value else 0,
                             paid_value_amount if paid_value else 0.0,
                             koc_value_amount,
+                            hop_dong_mua_value.strip(),
+                            unc_mua_value.strip(),
+                            hop_dong_ban_value.strip(),
+                            unc_ban_value.strip(),
                             note_value.strip(),
                             booking_id
                         )
