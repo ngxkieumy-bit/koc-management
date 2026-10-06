@@ -1695,7 +1695,7 @@ elif page == "📊 Monthly Analytics":
                 AC=("ac", "sum")
             )
             .sort_values(
-                "Hoa hồng thực tế",
+                "AC",
                 ascending=False
             )
             .head(20)
@@ -1703,7 +1703,7 @@ elif page == "📊 Monthly Analytics":
 
 
         top_brand["Tỷ lệ hoa hồng"] = (
-            top_brand["Hoa hồng thực tế"]
+            top_brand["AC"]
             / top_brand["GMV"]
             * 100
         ).fillna(0)
@@ -1718,8 +1718,8 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        brand_display["Hoa hồng thực tế"] = (
-            brand_display["Hoa hồng thực tế"]
+        brand_display["AC"] = (
+            brand_display["AC"]
             .apply(money)
         )
 
@@ -1751,7 +1751,7 @@ elif page == "📊 Monthly Analytics":
                 AC=("ac", "sum")
             )
             .sort_values(
-                "Hoa hồng thực tế",
+                "AC",
                 ascending=False
             )
             .head(20)
@@ -1759,7 +1759,7 @@ elif page == "📊 Monthly Analytics":
 
 
         top_koc["Tỷ lệ hoa hồng"] = (
-            top_koc["Hoa hồng thực tế"]
+            top_koc["AC"]
             / top_koc["GMV"]
             * 100
         ).fillna(0)
@@ -1774,8 +1774,8 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        koc_display["Hoa hồng thực tế"] = (
-            koc_display["Hoa hồng thực tế"]
+        koc_display["AC"] = (
+            koc_display["AC"]
             .apply(money)
         )
 
@@ -1813,7 +1813,7 @@ elif page == "📊 Monthly Analytics":
 
 
         brand_analysis["Tỷ lệ hoa hồng"] = (
-            brand_analysis["Hoa hồng thực tế"]
+            brand_analysis["AC"]
             / brand_analysis["GMV"]
             * 100
         ).fillna(0)
@@ -1822,7 +1822,7 @@ elif page == "📊 Monthly Analytics":
         brand_analysis = (
             brand_analysis
             .sort_values(
-                "Hoa hồng thực tế",
+                "AC",
                 ascending=False
             )
         )
@@ -1839,8 +1839,8 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        analysis_display["Hoa hồng thực tế"] = (
-            analysis_display["Hoa hồng thực tế"]
+        analysis_display["AC"] = (
+            analysis_display["AC"]
             .apply(money)
         )
 
@@ -1879,7 +1879,7 @@ elif page == "📊 Monthly Analytics":
 
 
         monthly["Tỷ lệ hoa hồng"] = (
-            monthly["Hoa hồng thực tế"]
+            monthly["AC"]
             / monthly["GMV"]
             * 100
         ).fillna(0)
@@ -1894,8 +1894,8 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        monthly_display["Hoa hồng thực tế"] = (
-            monthly_display["Hoa hồng thực tế"]
+        monthly_display["AC"] = (
+            monthly_display["AC"]
             .apply(money)
         )
 
