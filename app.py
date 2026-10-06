@@ -1718,7 +1718,7 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        brand_display["AC"] = (
+        brand_display["Hoa hồng thực tế"] = (
             brand_display["AC"]
             .apply(money)
         )
@@ -1774,7 +1774,7 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        koc_display["AC"] = (
+        koc_display["Hoa hồng thực tế"] = (
             koc_display["AC"]
             .apply(money)
         )
@@ -1839,7 +1839,7 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        analysis_display["AC"] = (
+        analysis_display["Hoa hồng thực tế"] = (
             analysis_display["AC"]
             .apply(money)
         )
@@ -1894,7 +1894,7 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        monthly_display["AC"] = (
+        monthly_display["Hoa hồng thực tế"] = (
             monthly_display["AC"]
             .apply(money)
         )
