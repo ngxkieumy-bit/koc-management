@@ -151,8 +151,8 @@ conn.commit()
 # =========================================================
 
 st.set_page_config(
-    page_title="KOC Management & Analytics",
-    page_icon="✨",
+    page_title="SINGO AGENCY | KOC Management & Analytics",
+    page_icon="✦",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -281,15 +281,15 @@ st.markdown(
     .stApp {{ background: {bg_css} center center / cover fixed no-repeat; }}
     .stApp::before {{ content: ""; position: fixed; inset: 0; background: rgba(255,248,250,.82); z-index:-1; }}
     [data-testid="stSidebar"] {{ background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,244,247,.97)); border-right:1px solid #f0d6dd; }}
-    .app-logo-wrap {{ display:flex; align-items:center; gap:10px; padding:8px 4px 16px; border-bottom:1px solid #f2dbe1; margin-bottom:14px; }}
+    .app-logo-wrap {{ display:flex; align-items:center; gap:12px; padding:8px 4px 18px; border-bottom:1px solid #f2dbe1; margin-bottom:16px; }}
     .app-logo {{ width:54px; height:54px; object-fit:contain; border-radius:14px; background:white; border:1px solid #f0d6dd; padding:5px; }}
-    .app-logo-title {{ font-size:18px; font-weight:800; line-height:1.05; color:#7e3145; }}
+    .app-logo-title {{ font-size:18px; font-weight:850; letter-spacing:.02em; line-height:1.05; color:#7e3145; }}
     .app-logo-sub {{ font-size:11px; color:#8b777c; margin-top:4px; }}
     .menu-label {{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a17984; font-weight:700; margin:8px 0 6px 4px; }}
-    div.stButton > button {{ border-radius:12px; border:1px solid #efd3db; background:rgba(255,255,255,.9); color:#3b2a2f; font-weight:600; min-height:42px; }}
-    div.stButton > button:hover {{ border-color:#d85b78; color:#b94663; background:#fff1f4; }}
-    .nav-active button {{ background:#f7dce4 !important; border-color:#e7b4c1 !important; color:#a63d58 !important; font-weight:800 !important; }}
-    .nav-child button {{ text-align:left !important; padding-left:18px !important; font-size:13px !important; background:#fff7f9 !important; border-color:#f1dce2 !important; }}
+    div.stButton > button {{ border-radius:14px; border:1px solid transparent; background:rgba(255,255,255,.42); color:#4b343a; font-weight:600; min-height:44px; box-shadow:none; transition:all .18s ease; }}
+    div.stButton > button:hover {{ border-color:#edc1cc; color:#a83f58; background:#fff2f5; transform:translateX(2px); }}
+    .nav-active button {{ background:linear-gradient(90deg,#f8dbe3,#fdeef2) !important; border-color:#efc2cd !important; color:#9e3b55 !important; font-weight:800 !important; box-shadow:0 4px 12px rgba(170,75,100,.08) !important; }}
+    .nav-child button {{ text-align:left !important; padding-left:16px !important; font-size:13px !important; background:transparent !important; border-color:transparent !important; min-height:38px !important; }}
     [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:14px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); }}
     h1,h2,h3 {{ color:#3a252b; }}
     </style>
@@ -303,7 +303,7 @@ else:
 
 with st.sidebar:
     st.markdown(
-        f"<div class=\"app-logo-wrap\">{logo_html}<div><div class=\"app-logo-title\">KOC</div><div class=\"app-logo-sub\">Management & Analytics</div></div></div>",
+        f"<div class=\"app-logo-wrap\">{logo_html}<div><div class=\"app-logo-title\">SINGO AGENCY</div><div class=\"app-logo-sub\">KOC Management & Analytics</div></div></div>",
         unsafe_allow_html=True
     )
     if "page" not in st.session_state:
@@ -312,14 +312,19 @@ with st.sidebar:
         st.session_state.dash_expanded = True
 
     st.markdown('<div class="menu-label">MENU</div>', unsafe_allow_html=True)
-    dash_label = "▾  Tổng quan số liệu TAP/Booking" if st.session_state.dash_expanded else "▸  Tổng quan số liệu TAP/Booking"
+
+    # Menu cha: Tổng quan TAP / Booking
+    dash_label = "⌄  Tổng quan số liệu TAP/Booking" if st.session_state.dash_expanded else "›  Tổng quan số liệu TAP/Booking"
+    dash_active = st.session_state.page in ["dashboard", "booking", "tap_target", "monthly"]
+    st.markdown(f'<div class="{"nav-active" if dash_active and st.session_state.page == "dashboard" else ""}">', unsafe_allow_html=True)
     if st.button(dash_label, use_container_width=True, key="nav_dash"):
         st.session_state.page = "dashboard"
         st.session_state.dash_expanded = not st.session_state.dash_expanded
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state.dash_expanded:
-        for label,key in [("▣  Dịch vụ Booking","booking"),("◎  Phân tích TAP","tap_target"),("▥  MO/DA (Monthly Analytics)","monthly")]:
+        for label,key in [("▱  Dịch vụ Booking","booking"),("◎  Phân tích TAP","tap_target"),("▥  MO/DA (Monthly Analytics)","monthly")]:
             active = st.session_state.page == key
             st.markdown(f'<div class="{"nav-active " if active else ""}nav-child">', unsafe_allow_html=True)
             if st.button(label, use_container_width=True, key=f"nav_{key}"):
@@ -327,7 +332,8 @@ with st.sidebar:
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+
     for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("⚙  Cài đặt","settings")]:
         active = st.session_state.page == key
         st.markdown(f'<div class="{"nav-active" if active else ""}">', unsafe_allow_html=True)
