@@ -290,7 +290,10 @@ st.markdown(
     div.stButton > button:hover {{ border-color:#edc1cc; color:#a83f58; background:#fff2f5; transform:translateX(2px); }}
     .nav-active button {{ background:linear-gradient(90deg,#f8dbe3,#fdeef2) !important; border-color:#efc2cd !important; color:#9e3b55 !important; font-weight:800 !important; box-shadow:0 4px 12px rgba(170,75,100,.08) !important; }}
     .nav-child button {{ text-align:left !important; padding-left:16px !important; font-size:13px !important; background:transparent !important; border-color:transparent !important; min-height:38px !important; }}
-    [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:14px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); }}
+    [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:12px 13px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); min-width:0; }}
+    [data-testid="stMetricLabel"] {{ font-size:0.78rem !important; line-height:1.15 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    [data-testid="stMetricValue"] {{ font-size:22px !important; line-height:1.15 !important; white-space:nowrap !important; overflow:visible !important; text-overflow:clip !important; letter-spacing:-0.4px; }}
+    [data-testid="stMetricValue"] > div {{ white-space:nowrap !important; overflow:visible !important; }}
     h1,h2,h3 {{ color:#3a252b; }}
     </style>
     """, unsafe_allow_html=True
