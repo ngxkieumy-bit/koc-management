@@ -1,6 +1,11 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+
+try:
+    import plotly.express as px
+except ImportError:
+    px = None
 from datetime import date
 
 
@@ -915,13 +920,93 @@ if page == "🏠 Dashboard":
 
         c1, c2 = st.columns(2)
 
-        with c1:
-            st.write("💰 GMV")
-            st.bar_chart(monthly_chart[["GMV"]])
+        if px is not None:
 
-        with c2:
-            st.write("💰 Tổng doanh thu")
-            st.bar_chart(monthly_chart[["Tong_doanh_thu"]])
+            chart_data = (
+                monthly_chart
+                .reset_index()
+                .rename(
+                    columns={
+                        "report_month": "Tháng"
+                    }
+                )
+            )
+
+            with c1:
+                fig_gmv = px.bar(
+                    chart_data,
+                    x=chart_data.columns[0],
+                    y="GMV",
+                    title="💰 GMV theo tháng",
+                    text_auto=".3s"
+                )
+
+                fig_gmv.update_traces(
+                    marker_color="#5B8DEF"
+                )
+
+                fig_gmv.update_layout(
+                    height=360,
+                    margin=dict(
+                        l=20,
+                        r=20,
+                        t=55,
+                        b=20
+                    ),
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    showlegend=False
+                )
+
+                st.plotly_chart(
+                    fig_gmv,
+                    use_container_width=True
+                )
+
+            with c2:
+                fig_revenue = px.bar(
+                    chart_data,
+                    x=chart_data.columns[0],
+                    y="Tong_doanh_thu",
+                    title="💰 Tổng doanh thu theo tháng",
+                    text_auto=".3s"
+                )
+
+                fig_revenue.update_traces(
+                    marker_color="#34A853"
+                )
+
+                fig_revenue.update_layout(
+                    height=360,
+                    margin=dict(
+                        l=20,
+                        r=20,
+                        t=55,
+                        b=20
+                    ),
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    showlegend=False
+                )
+
+                st.plotly_chart(
+                    fig_revenue,
+                    use_container_width=True
+                )
+
+        else:
+
+            with c1:
+                st.write("💰 GMV")
+                st.bar_chart(
+                    monthly_chart[["GMV"]]
+                )
+
+            with c2:
+                st.write("💰 Tổng doanh thu")
+                st.bar_chart(
+                    monthly_chart[["Tong_doanh_thu"]]
+                )
 
         st.divider()
         st.subheader("📅 Tổng quan các tháng")
