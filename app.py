@@ -477,9 +477,18 @@ if page == "dashboard":
             analytics_all["report_month"].astype(str) == selected_month
         ].copy()
 
-        current_booking = booking_all[
-            booking_all["contract_month"].astype(str) == selected_month
-        ].copy()
+        # Booking tháng được chuẩn hóa lại lần nữa ngay tại Dashboard.
+        # Nếu dữ liệu đã có trong trang Booking thì Dashboard phải lấy đúng
+        # doanh thu ròng của cùng tháng, kể cả khi contract_month được lưu
+        # dưới dạng YYYY-MM, YYYY-MM-DD hoặc giá trị date/time.
+        current_booking = booking_all.copy()
+        if not current_booking.empty:
+            current_booking["_month_key"] = current_booking["contract_month"].apply(
+                normalize_month_value
+            )
+            current_booking = current_booking[
+                current_booking["_month_key"].astype(str) == str(selected_month)
+            ].copy()
 
         current_gmv = (
             float(current["gmv"].sum())
@@ -2828,6 +2837,12 @@ elif page == "booking":
             ]
         ].copy()
 
+        # Cột xóa riêng cho từng dòng.
+        # Dùng checkbox thay cho nút xóa mặc định của data_editor vì
+        # một số phiên bản Streamlit không hiện icon thùng rác khi
+        # num_rows="dynamic".
+        editor_source.insert(0, "delete_row", False)
+
         editor_source["running"] = (
             editor_source["running"].astype(bool)
         )
@@ -2840,9 +2855,14 @@ elif page == "booking":
             editor_source,
             use_container_width=True,
             hide_index=True,
-            num_rows="dynamic",
+            num_rows="fixed",
             key="booking_editor",
             column_config={
+                "delete_row": st.column_config.CheckboxColumn(
+                    "🗑️ Xóa",
+                    help="Tick vào dòng muốn xóa khỏi Booking.",
+                    default=False
+                ),
                 "id": st.column_config.NumberColumn(
                     "ID",
                     disabled=True
@@ -2904,7 +2924,7 @@ elif page == "booking":
         )
 
         st.caption(
-            "💡 Tick trực tiếp Đang chạy/Đã thanh toán, sửa số tiền, hoặc bấm 🗑️ để xóa dòng. Sau đó bấm Lưu tất cả thay đổi."
+            "💡 Mỗi dòng có ô 🗑️ Xóa ở bên trái. Tick dòng muốn xóa, chỉnh số tiền/trạng thái nếu cần, rồi bấm Lưu tất cả thay đổi."
         )
 
         if st.button(
@@ -2916,29 +2936,20 @@ elif page == "booking":
             updated_count = 0
             deleted_count = 0
 
-            # Dòng bị bấm 🗑️ sẽ biến mất khỏi edited_booking.
-            # So sánh ID để xóa thật khỏi database.
-            original_ids = set(
+            # Xóa đúng những dòng được tick ở cột 🗑️ Xóa.
+            rows_to_delete = edited_booking[
+                edited_booking["delete_row"] == True
+            ].copy()
+
+            deleted_ids = set(
                 pd.to_numeric(
-                    filtered_booking["id"],
+                    rows_to_delete["id"],
                     errors="coerce"
                 )
                 .dropna()
                 .astype(int)
                 .tolist()
             )
-
-            edited_ids = set(
-                pd.to_numeric(
-                    edited_booking["id"],
-                    errors="coerce"
-                )
-                .dropna()
-                .astype(int)
-                .tolist()
-            )
-
-            deleted_ids = original_ids - edited_ids
 
             for booking_id in deleted_ids:
                 cursor.execute(
@@ -2949,6 +2960,9 @@ elif page == "booking":
 
             # Cập nhật các dòng còn lại.
             for _, row in edited_booking.iterrows():
+
+                if bool(row.get("delete_row", False)):
+                    continue
 
                 if pd.isna(row.get("id")):
                     continue
