@@ -258,24 +258,24 @@ with tab4:
     # ADD KOC
     # =========================
 
-    with tab1:
+         with tab1:
 
-        username = st.text_input(
+            username = st.text_input(
             "TikTok Username",
             placeholder="@username"
         )
 
-        phone = st.text_input("Số điện thoại")
+            phone = st.text_input("Số điện thoại")
 
-        name = st.text_input("Tên KOC")
+            name = st.text_input("Tên KOC")
 
-        follower = st.number_input(
+            follower = st.number_input(
             "Follower",
             min_value=0,
             step=1000
         )
 
-        category = st.selectbox(
+            category = st.selectbox(
             "Ngành hàng",
             [
                 "Beauty",
@@ -288,7 +288,7 @@ with tab4:
             ]
         )
 
-        note = st.text_area("Ghi chú")
+            note = st.text_area("Ghi chú")
 
         if st.button("💾 Lưu KOC", type="primary"):
 
