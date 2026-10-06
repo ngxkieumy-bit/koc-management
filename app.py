@@ -884,9 +884,12 @@ if page == "🏠 Dashboard":
                 Doanh_thu_Booking_rong=("booking_net", "sum")
             )
             if not booking_all.empty
-            else pd.Series(
-                dtype=float,
-                name="Booking_da_thanh_toan"
+            else pd.DataFrame(
+                columns=[
+                    "Booking_da_thanh_toan",
+                    "KOC_da_thanh_toan",
+                    "Doanh_thu_Booking_rong"
+                ]
             )
         )
 
@@ -894,6 +897,14 @@ if page == "🏠 Dashboard":
             booking_monthly,
             how="outer"
         ).fillna(0)
+
+        for col in [
+            "Booking_da_thanh_toan",
+            "KOC_da_thanh_toan",
+            "Doanh_thu_Booking_rong"
+        ]:
+            if col not in monthly_chart.columns:
+                monthly_chart[col] = 0
 
         monthly_chart["Tong_doanh_thu"] = (
             monthly_chart["Hoa_hong_thuc_te"]
