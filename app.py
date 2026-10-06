@@ -15,10 +15,6 @@ conn = sqlite3.connect(
 cursor = conn.cursor()
 
 
-# =========================================================
-# CREATE TABLES
-# =========================================================
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS koc (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,15 +44,12 @@ CREATE TABLE IF NOT EXISTS analytics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     report_date TEXT,
     report_month TEXT,
-    campaign_id TEXT,
-    campaign_name TEXT,
     creator_name TEXT,
     store_name TEXT,
     gmv REAL DEFAULT 0,
     ac REAL DEFAULT 0
 )
 """)
-
 
 conn.commit()
 
@@ -73,7 +66,7 @@ st.set_page_config(
 
 
 # =========================================================
-# HELPER FUNCTIONS
+# FUNCTIONS
 # =========================================================
 
 def money(value):
@@ -84,124 +77,54 @@ def percent(value):
     return f"{value:.2f}%"
 
 
-def clean_number(series):
+def clean_money(series):
     """
-    Làm sạch số tiền:
-    100,000,000
-    100000000
-    100.000.000
-    100000000 ₫
+    Xử lý tiền TikTok dạng:
+    17.683.683.391₫
+    708.471.259₫
+    0₫
     """
 
-    return (
+    return pd.to_numeric(
         series
         .astype(str)
-        .str.replace(",", "", regex=False)
-        .str.replace(".", "", regex=False)
         .str.replace("₫", "", regex=False)
         .str.replace("đ", "", regex=False)
+        .str.replace(",", "", regex=False)
+        .str.replace(".", "", regex=False)
         .str.replace(" ", "", regex=False)
+        .str.strip(),
+        errors="coerce"
+    ).fillna(0)
+
+
+def parse_tiktok_date(series):
+    """
+    File TikTok có dạng:
+
+    2026-09-01-2026-09-30
+
+    Lấy ngày đầu tiên:
+
+    2026-09-01
+    """
+
+    text = (
+        series
+        .astype(str)
         .str.strip()
-        .replace(
-            ["", "nan", "None", "NaN"],
-            "0"
-        )
-        .pipe(
-            pd.to_numeric,
-            errors="coerce"
-        )
-        .fillna(0)
     )
 
+    extracted = text.str.extract(
+        r"(\d{4}-\d{2}-\d{2})",
+        expand=False
+    )
 
-def parse_tiktok_date(value):
-
-    if pd.isna(value):
-        return pd.NaT
-
-    # Nếu đã là Timestamp
-    if isinstance(value, pd.Timestamp):
-        return value
-
-    # Nếu là datetime
-    if hasattr(value, "year") and hasattr(value, "month"):
-
-        try:
-            return pd.Timestamp(value)
-        except Exception:
-            pass
-
-    # Nếu là Excel serial date
-    if isinstance(value, (int, float)):
-
-        try:
-
-            number = float(value)
-
-            if 20000 < number < 60000:
-
-                return (
-                    pd.Timestamp("1899-12-30")
-                    + pd.to_timedelta(
-                        number,
-                        unit="D"
-                    )
-                )
-
-        except Exception:
-            pass
-
-    # Nếu là text
-    value = str(value).strip()
-
-    if not value:
-        return pd.NaT
-
-    formats = [
-        "%d/%m/%Y",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M",
-        "%Y-%m-%d",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%d-%m-%Y",
-        "%d-%m-%Y %H:%M:%S",
-        "%m/%d/%Y",
-        "%m/%d/%Y %H:%M:%S"
-    ]
-
-    for fmt in formats:
-
-        try:
-
-            result = pd.to_datetime(
-                value,
-                format=fmt,
-                errors="coerce"
-            )
-
-            if pd.notna(result):
-                return result
-
-        except Exception:
-            pass
-
-    # Cuối cùng thử pandas
-    try:
-
-        result = pd.to_datetime(
-            value,
-            dayfirst=True,
-            errors="coerce"
-        )
-
-        if pd.notna(result):
-            return result
-
-    except Exception:
-        pass
-
-    return pd.NaT
+    return pd.to_datetime(
+        extracted,
+        format="%Y-%m-%d",
+        errors="coerce"
+    )
 
 
 # =========================================================
@@ -220,7 +143,7 @@ st.divider()
 
 
 # =========================================================
-# SIDEBAR
+# MENU
 # =========================================================
 
 page = st.sidebar.radio(
@@ -250,7 +173,7 @@ if page == "🏠 Dashboard":
         conn
     ).iloc[0]["total"]
 
-    total_months = pd.read_sql(
+    total_month = pd.read_sql(
         """
         SELECT COUNT(DISTINCT report_month) AS total
         FROM analytics
@@ -278,20 +201,14 @@ if page == "🏠 Dashboard":
 
         st.metric(
             "📅 Tháng dữ liệu",
-            int(total_months)
+            int(total_month)
         )
 
     st.success(
         "🚀 Hệ thống KOC đang hoạt động."
     )
 
-    st.divider()
-
-    st.subheader(
-        "📈 Tổng quan Analytics"
-    )
-
-    analytics_df = pd.read_sql(
+    data = pd.read_sql(
         """
         SELECT
             report_month,
@@ -304,39 +221,31 @@ if page == "🏠 Dashboard":
         conn
     )
 
-    if analytics_df.empty:
+    if data.empty:
 
         st.info(
-            "Chưa có dữ liệu Analytics. "
-            "Vào 📊 Monthly Analytics để upload file TikTok."
+            "Chưa có dữ liệu Analytics."
         )
 
     else:
 
-        analytics_df["AC / GMV (%)"] = (
-            analytics_df["ac"]
-            / analytics_df["gmv"]
+        data["AC / GMV (%)"] = (
+            data["ac"]
+            / data["gmv"]
             * 100
         ).fillna(0)
 
-        analytics_df["GMV"] = (
-            analytics_df["gmv"]
+        display = data.copy()
+
+        display["gmv"] = (
+            display["gmv"]
             .apply(money)
         )
 
-        analytics_df["AC"] = (
-            analytics_df["ac"]
+        display["ac"] = (
+            display["ac"]
             .apply(money)
         )
-
-        display = analytics_df[
-            [
-                "report_month",
-                "GMV",
-                "AC",
-                "AC / GMV (%)"
-            ]
-        ].copy()
 
         display.columns = [
             "Tháng",
@@ -371,7 +280,7 @@ elif page == "👤 KOC Database":
 
 
     # =====================================================
-    # TAB 1 - ADD KOC
+    # ADD KOC
     # =====================================================
 
     with tab1:
@@ -468,12 +377,12 @@ elif page == "👤 KOC Database":
                 except sqlite3.IntegrityError:
 
                     st.warning(
-                        f"{username} đã tồn tại."
+                        "KOC này đã tồn tại."
                     )
 
 
     # =====================================================
-    # TAB 2 - BULK CHECK
+    # CHECK KOC
     # =====================================================
 
     with tab2:
@@ -484,7 +393,6 @@ elif page == "👤 KOC Database":
 
         usernames = st.text_area(
             "Paste username - mỗi dòng 1 username",
-            placeholder="@abc\n@xyz\n@mymy",
             height=180
         )
 
@@ -493,7 +401,21 @@ elif page == "👤 KOC Database":
             type="primary"
         ):
 
-            if not usernames.strip():
+            names = []
+
+            for username in usernames.splitlines():
+
+                username = username.strip()
+
+                if username:
+
+                    if not username.startswith("@"):
+                        username = "@" + username
+
+                    if username not in names:
+                        names.append(username)
+
+            if not names:
 
                 st.warning(
                     "Vui lòng nhập username."
@@ -501,25 +423,12 @@ elif page == "👤 KOC Database":
 
             else:
 
-                username_list = []
-
-                for username in usernames.splitlines():
-
-                    username = username.strip()
-
-                    if username:
-
-                        if not username.startswith("@"):
-                            username = "@" + username
-
-                        if username not in username_list:
-                            username_list.append(username)
-
                 placeholders = ",".join(
-                    ["?"] * len(username_list)
+                    ["?"] * len(names)
                 )
 
-                query = f"""
+                result = pd.read_sql(
+                    f"""
                     SELECT
                         username,
                         phone,
@@ -528,26 +437,24 @@ elif page == "👤 KOC Database":
                         category
                     FROM koc
                     WHERE username IN ({placeholders})
-                """
-
-                result = pd.read_sql(
-                    query,
+                    """,
                     conn,
-                    params=username_list
+                    params=names
                 )
 
                 found = set(
-                    result["username"].tolist()
+                    result["username"]
                 )
 
                 output = []
 
-                for username in username_list:
+                for username in names:
 
                     if username in found:
 
                         row = result[
-                            result["username"] == username
+                            result["username"]
+                            == username
                         ].iloc[0]
 
                         output.append(
@@ -578,41 +485,28 @@ elif page == "👤 KOC Database":
                     output
                 )
 
-                total = len(output_df)
-
-                found_count = len(
-                    output_df[
-                        output_df["Trạng thái"]
-                        == "✅ ĐÃ CÓ"
-                    ]
-                )
-
-                not_found_count = (
-                    total - found_count
-                )
+                found_count = (
+                    output_df["Trạng thái"]
+                    == "✅ ĐÃ CÓ"
+                ).sum()
 
                 col1, col2, col3 = st.columns(3)
 
-                with col1:
+                col1.metric(
+                    "Tổng kiểm tra",
+                    len(output_df)
+                )
 
-                    st.metric(
-                        "Tổng kiểm tra",
-                        total
-                    )
+                col2.metric(
+                    "✅ Đã có",
+                    int(found_count)
+                )
 
-                with col2:
-
-                    st.metric(
-                        "✅ Đã có",
-                        found_count
-                    )
-
-                with col3:
-
-                    st.metric(
-                        "❌ Chưa có",
-                        not_found_count
-                    )
+                col3.metric(
+                    "❌ Chưa có",
+                    len(output_df)
+                    - int(found_count)
+                )
 
                 st.dataframe(
                     output_df,
@@ -620,14 +514,15 @@ elif page == "👤 KOC Database":
                     hide_index=True
                 )
 
-                phone_list = output_df[
+
+                phones = output_df[
                     output_df["Trạng thái"]
                     == "✅ ĐÃ CÓ"
                 ]["Số điện thoại"]
 
                 phone_text = "\n".join(
                     str(phone)
-                    for phone in phone_list
+                    for phone in phones
                     if str(phone).strip()
                 )
 
@@ -641,7 +536,7 @@ elif page == "👤 KOC Database":
 
 
     # =====================================================
-    # TAB 3 - IMPORT KOC
+    # IMPORT KOC
     # =====================================================
 
     with tab3:
@@ -651,7 +546,11 @@ elif page == "👤 KOC Database":
         )
 
         st.write(
-            "Cần có: **username, phone**"
+            "File cần có ít nhất:"
+        )
+
+        st.markdown(
+            "**username** và **phone**"
         )
 
         uploaded_file = st.file_uploader(
@@ -660,7 +559,7 @@ elif page == "👤 KOC Database":
             key="koc_upload"
         )
 
-        if uploaded_file is not None:
+        if uploaded_file:
 
             try:
 
@@ -674,181 +573,163 @@ elif page == "👤 KOC Database":
                     hide_index=True
                 )
 
-                required_columns = [
+                if not {
                     "username",
                     "phone"
-                ]
-
-                missing_columns = [
-                    col
-                    for col in required_columns
-                    if col not in import_df.columns
-                ]
-
-                if missing_columns:
+                }.issubset(import_df.columns):
 
                     st.error(
-                        "Thiếu cột: "
-                        + ", ".join(
-                            missing_columns
-                        )
+                        "Thiếu cột username hoặc phone."
                     )
 
-                else:
+                elif st.button(
+                    "🚀 Import vào Database",
+                    type="primary"
+                ):
 
-                    if st.button(
-                        "🚀 Import vào Database",
-                        type="primary"
-                    ):
+                    added = 0
+                    updated = 0
 
-                        added = 0
-                        updated = 0
-                        skipped = 0
+                    for _, row in import_df.iterrows():
 
-                        for _, row in import_df.iterrows():
+                        username = str(
+                            row["username"]
+                        ).strip()
 
-                            username = str(
-                                row["username"]
-                            ).strip()
+                        if (
+                            not username
+                            or username == "nan"
+                        ):
+                            continue
 
-                            if (
-                                not username
-                                or username == "nan"
-                            ):
+                        if not username.startswith("@"):
+                            username = "@" + username
 
-                                skipped += 1
-                                continue
+                        phone = str(
+                            row["phone"]
+                        ).strip()
 
-                            if not username.startswith("@"):
-                                username = "@" + username
+                        if phone == "nan":
+                            phone = ""
 
-                            phone = str(
-                                row["phone"]
-                            ).strip()
-
-                            if phone == "nan":
-                                phone = ""
-
-                            name_value = str(
-                                row.get("name", "")
-                            ).strip()
-
-                            if name_value == "nan":
-                                name_value = ""
-
-                            follower_value = row.get(
-                                "follower",
-                                0
+                        name_value = str(
+                            row.get(
+                                "name",
+                                ""
                             )
+                        )
 
-                            if pd.isna(
-                                follower_value
-                            ):
-                                follower_value = 0
+                        if name_value == "nan":
+                            name_value = ""
 
-                            category_value = str(
-                                row.get(
-                                    "category",
-                                    "Other"
-                                )
-                            ).strip()
+                        follower_value = row.get(
+                            "follower",
+                            0
+                        )
 
-                            if category_value == "nan":
-                                category_value = "Other"
+                        if pd.isna(
+                            follower_value
+                        ):
+                            follower_value = 0
 
-                            note_value = str(
-                                row.get(
-                                    "note",
-                                    ""
-                                )
-                            ).strip()
+                        category_value = str(
+                            row.get(
+                                "category",
+                                "Other"
+                            )
+                        )
 
-                            if note_value == "nan":
-                                note_value = ""
+                        if category_value == "nan":
+                            category_value = "Other"
 
-                            existing = cursor.execute(
+                        note_value = str(
+                            row.get(
+                                "note",
+                                ""
+                            )
+                        )
+
+                        if note_value == "nan":
+                            note_value = ""
+
+                        exists = cursor.execute(
+                            """
+                            SELECT id
+                            FROM koc
+                            WHERE username = ?
+                            """,
+                            (username,)
+                        ).fetchone()
+
+                        if exists:
+
+                            cursor.execute(
                                 """
-                                SELECT id
-                                FROM koc
+                                UPDATE koc
+                                SET
+                                    phone = ?,
+                                    name = ?,
+                                    follower = ?,
+                                    category = ?,
+                                    note = ?
                                 WHERE username = ?
                                 """,
-                                (username,)
-                            ).fetchone()
-
-                            if existing:
-
-                                cursor.execute(
-                                    """
-                                    UPDATE koc
-                                    SET
-                                        phone = ?,
-                                        name = ?,
-                                        follower = ?,
-                                        category = ?,
-                                        note = ?
-                                    WHERE username = ?
-                                    """,
-                                    (
-                                        phone,
-                                        name_value,
-                                        int(
-                                            follower_value
-                                        ),
-                                        category_value,
-                                        note_value,
-                                        username
-                                    )
+                                (
+                                    phone,
+                                    name_value,
+                                    int(follower_value),
+                                    category_value,
+                                    note_value,
+                                    username
                                 )
+                            )
 
-                                updated += 1
+                            updated += 1
 
-                            else:
+                        else:
 
-                                cursor.execute(
-                                    """
-                                    INSERT INTO koc
-                                    (
-                                        username,
-                                        phone,
-                                        name,
-                                        follower,
-                                        category,
-                                        note
-                                    )
-                                    VALUES (?, ?, ?, ?, ?, ?)
-                                    """,
-                                    (
-                                        username,
-                                        phone,
-                                        name_value,
-                                        int(
-                                            follower_value
-                                        ),
-                                        category_value,
-                                        note_value
-                                    )
+                            cursor.execute(
+                                """
+                                INSERT INTO koc
+                                (
+                                    username,
+                                    phone,
+                                    name,
+                                    follower,
+                                    category,
+                                    note
                                 )
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    username,
+                                    phone,
+                                    name_value,
+                                    int(follower_value),
+                                    category_value,
+                                    note_value
+                                )
+                            )
 
-                                added += 1
+                            added += 1
 
-                        conn.commit()
+                    conn.commit()
 
-                        st.success(
-                            f"Import thành công! "
-                            f"➕ {added} mới | "
-                            f"🔄 {updated} cập nhật | "
-                            f"⚠️ {skipped} bỏ qua"
-                        )
+                    st.success(
+                        f"Import thành công! "
+                        f"➕ {added} mới | "
+                        f"🔄 {updated} cập nhật"
+                    )
 
             except Exception as e:
 
                 st.error(
-                    f"Không thể đọc file: {e}"
+                    f"Lỗi: {e}"
                 )
 
 
     # =====================================================
-    # TAB 4 - KOC LIST
+    # KOC LIST
     # =====================================================
 
     with tab4:
@@ -860,7 +741,6 @@ elif page == "👤 KOC Database":
         all_koc = pd.read_sql(
             """
             SELECT
-                id,
                 username,
                 phone,
                 name,
@@ -873,120 +753,41 @@ elif page == "👤 KOC Database":
             conn
         )
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            search = st.text_input(
-                "🔎 Tìm KOC",
-                placeholder="Username / tên / SĐT"
-            )
-
-        with col2:
-
-            categories = (
-                ["Tất cả"]
-                + sorted(
-                    all_koc["category"]
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
-            )
-
-            category_filter = st.selectbox(
-                "🏷️ Ngành hàng",
-                categories
-            )
-
-        filtered = all_koc.copy()
+        search = st.text_input(
+            "🔎 Tìm KOC",
+            placeholder="Username / tên / SĐT"
+        )
 
         if search.strip():
 
-            search_text = (
-                search.strip().lower()
-            )
+            q = search.lower().strip()
 
-            filtered = filtered[
-                filtered["username"]
+            all_koc = all_koc[
+                all_koc["username"]
                 .astype(str)
                 .str.lower()
-                .str.contains(
-                    search_text,
-                    na=False
-                )
+                .str.contains(q, na=False)
                 |
-                filtered["name"]
+                all_koc["name"]
                 .astype(str)
                 .str.lower()
-                .str.contains(
-                    search_text,
-                    na=False
-                )
+                .str.contains(q, na=False)
                 |
-                filtered["phone"]
+                all_koc["phone"]
                 .astype(str)
                 .str.lower()
-                .str.contains(
-                    search_text,
-                    na=False
-                )
+                .str.contains(q, na=False)
             ]
 
-        if category_filter != "Tất cả":
-
-            filtered = filtered[
-                filtered["category"]
-                == category_filter
-            ]
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            st.metric(
-                "👤 Tổng KOC",
-                len(all_koc)
-            )
-
-        with col2:
-
-            st.metric(
-                "🔎 Kết quả",
-                len(filtered)
-            )
-
-        with col3:
-
-            phone_count = (
-                filtered["phone"]
-                .fillna("")
-                .astype(str)
-                .str.strip()
-                .ne("")
-                .sum()
-            )
-
-            st.metric(
-                "📱 Có SĐT",
-                int(phone_count)
-            )
-
-        st.dataframe(
-            filtered,
-            use_container_width=True,
-            hide_index=True
+        st.metric(
+            "👤 Tổng KOC",
+            len(all_koc)
         )
 
-        csv = filtered.to_csv(
-            index=False
-        ).encode("utf-8-sig")
-
-        st.download_button(
-            "📥 Xuất danh sách KOC",
-            data=csv,
-            file_name="koc_database.csv",
-            mime="text/csv"
+        st.dataframe(
+            all_koc,
+            use_container_width=True,
+            hide_index=True
         )
 
 
@@ -1040,8 +841,7 @@ elif page == "🏷️ Brand Database":
         )
 
         note = st.text_area(
-            "Ghi chú",
-            placeholder="Beauty / TikTok Shop / Campaign tháng 10"
+            "Ghi chú"
         )
 
         if st.button(
@@ -1049,9 +849,7 @@ elif page == "🏷️ Brand Database":
             type="primary"
         ):
 
-            brand_name = brand_name.strip()
-
-            if not brand_name:
+            if not brand_name.strip():
 
                 st.error(
                     "Vui lòng nhập tên Brand."
@@ -1073,9 +871,9 @@ elif page == "🏷️ Brand Database":
                         VALUES (?, ?, ?, ?)
                         """,
                         (
-                            brand_name,
-                            float(commission),
-                            float(target_gmv),
+                            brand_name.strip(),
+                            commission,
+                            target_gmv,
                             note.strip()
                         )
                     )
@@ -1083,13 +881,13 @@ elif page == "🏷️ Brand Database":
                     conn.commit()
 
                     st.success(
-                        f"Đã lưu Brand: {brand_name}"
+                        "Đã lưu Brand!"
                     )
 
                 except sqlite3.IntegrityError:
 
                     st.warning(
-                        f"Brand '{brand_name}' đã tồn tại."
+                        "Brand đã tồn tại."
                     )
 
 
@@ -1100,168 +898,117 @@ elif page == "🏷️ Brand Database":
     with tab2:
 
         st.subheader(
-            "📥 Import Brand từ Excel"
+            "📥 Import Brand"
         )
 
-        st.write(
-            "Cần có: **brand_name, commission, target_gmv**"
-        )
-
-        uploaded_brand_file = st.file_uploader(
-            "Chọn file Excel Brand",
+        uploaded_brand = st.file_uploader(
+            "Chọn file Excel",
             type=["xlsx", "xls"],
             key="brand_upload"
         )
 
-        if uploaded_brand_file is not None:
+        if uploaded_brand:
 
-            try:
+            brand_df = pd.read_excel(
+                uploaded_brand
+            )
 
-                brand_df = pd.read_excel(
-                    uploaded_brand_file
+            st.dataframe(
+                brand_df.head(10),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            required = {
+                "brand_name",
+                "commission",
+                "target_gmv"
+            }
+
+            if not required.issubset(
+                brand_df.columns
+            ):
+
+                st.error(
+                    "File cần có: "
+                    "brand_name, commission, target_gmv"
                 )
 
-                st.dataframe(
-                    brand_df.head(10),
-                    use_container_width=True,
-                    hide_index=True
-                )
+            elif st.button(
+                "🚀 Import Brand",
+                type="primary"
+            ):
 
-                required_columns = [
-                    "brand_name",
-                    "commission",
-                    "target_gmv"
-                ]
+                for _, row in brand_df.iterrows():
 
-                missing_columns = [
-                    col
-                    for col in required_columns
-                    if col not in brand_df.columns
-                ]
+                    name = str(
+                        row["brand_name"]
+                    ).strip()
 
-                if missing_columns:
+                    if not name:
+                        continue
 
-                    st.error(
-                        "Thiếu cột: "
-                        + ", ".join(
-                            missing_columns
+                    commission_value = row[
+                        "commission"
+                    ]
+
+                    target_value = row[
+                        "target_gmv"
+                    ]
+
+                    if pd.isna(
+                        commission_value
+                    ):
+                        commission_value = 0
+
+                    if pd.isna(
+                        target_value
+                    ):
+                        target_value = 0
+
+                    note_value = str(
+                        row.get(
+                            "note",
+                            ""
                         )
                     )
 
-                else:
-
-                    if st.button(
-                        "🚀 Import Brand",
-                        type="primary"
-                    ):
-
-                        added = 0
-                        updated = 0
-
-                        for _, row in brand_df.iterrows():
-
-                            brand_name = str(
-                                row["brand_name"]
-                            ).strip()
-
-                            if not brand_name:
-                                continue
-
-                            commission_value = row[
-                                "commission"
-                            ]
-
-                            target_gmv_value = row[
-                                "target_gmv"
-                            ]
-
-                            if pd.isna(
-                                commission_value
-                            ):
-                                commission_value = 0
-
-                            if pd.isna(
-                                target_gmv_value
-                            ):
-                                target_gmv_value = 0
-
-                            note_value = str(
-                                row.get("note", "")
-                            ).strip()
-
-                            existing = cursor.execute(
-                                """
-                                SELECT id
-                                FROM brands
-                                WHERE brand_name = ?
-                                """,
-                                (brand_name,)
-                            ).fetchone()
-
-                            if existing:
-
-                                cursor.execute(
-                                    """
-                                    UPDATE brands
-                                    SET
-                                        commission = ?,
-                                        target_gmv = ?,
-                                        note = ?
-                                    WHERE brand_name = ?
-                                    """,
-                                    (
-                                        float(
-                                            commission_value
-                                        ),
-                                        float(
-                                            target_gmv_value
-                                        ),
-                                        note_value,
-                                        brand_name
-                                    )
-                                )
-
-                                updated += 1
-
-                            else:
-
-                                cursor.execute(
-                                    """
-                                    INSERT INTO brands
-                                    (
-                                        brand_name,
-                                        commission,
-                                        target_gmv,
-                                        note
-                                    )
-                                    VALUES (?, ?, ?, ?)
-                                    """,
-                                    (
-                                        brand_name,
-                                        float(
-                                            commission_value
-                                        ),
-                                        float(
-                                            target_gmv_value
-                                        ),
-                                        note_value
-                                    )
-                                )
-
-                                added += 1
-
-                        conn.commit()
-
-                        st.success(
-                            f"Import thành công! "
-                            f"➕ {added} mới | "
-                            f"🔄 {updated} cập nhật"
+                    cursor.execute(
+                        """
+                        INSERT INTO brands
+                        (
+                            brand_name,
+                            commission,
+                            target_gmv,
+                            note
                         )
+                        VALUES (?, ?, ?, ?)
 
-            except Exception as e:
+                        ON CONFLICT(brand_name)
+                        DO UPDATE SET
+                            commission =
+                                excluded.commission,
+                            target_gmv =
+                                excluded.target_gmv,
+                            note =
+                                excluded.note
+                        """,
+                        (
+                            name,
+                            float(
+                                commission_value
+                            ),
+                            float(
+                                target_value
+                            ),
+                            note_value
+                        )
+                    )
 
-                st.error(
-                    f"Lỗi: {e}"
+                conn.commit()
+
+                st.success(
+                    "Import Brand thành công!"
                 )
 
 
@@ -1275,10 +1022,9 @@ elif page == "🏷️ Brand Database":
             "📋 Danh sách Brand"
         )
 
-        all_brands = pd.read_sql(
+        brand_df = pd.read_sql(
             """
             SELECT
-                id,
                 brand_name,
                 commission,
                 target_gmv,
@@ -1290,106 +1036,80 @@ elif page == "🏷️ Brand Database":
         )
 
         search_brand = st.text_input(
-            "🔎 Tìm Brand",
-            placeholder="Nhập tên Brand"
+            "🔎 Tìm Brand"
         )
-
-        filtered_brands = all_brands.copy()
 
         if search_brand.strip():
 
-            search_text = (
-                search_brand.strip().lower()
-            )
-
-            filtered_brands = filtered_brands[
-                filtered_brands["brand_name"]
+            brand_df = brand_df[
+                brand_df["brand_name"]
                 .astype(str)
                 .str.lower()
                 .str.contains(
-                    search_text,
+                    search_brand.lower(),
                     na=False
                 )
             ]
 
-        total_brand = len(
-            all_brands
-        )
-
-        result_brand = len(
-            filtered_brands
-        )
-
-        total_target = (
-            filtered_brands["target_gmv"]
-            .sum()
-        )
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            st.metric(
-                "🏷️ Tổng Brand",
-                total_brand
-            )
-
-        with col2:
-
-            st.metric(
-                "🔎 Kết quả",
-                result_brand
-            )
-
-        with col3:
-
-            st.metric(
-                "🎯 Tổng GMV mục tiêu",
-                money(total_target)
-            )
-
-        display_brand = filtered_brands.copy()
-
-        display_brand["TAP dự kiến nhận"] = (
-            display_brand["target_gmv"]
-            * display_brand["commission"]
+        brand_df["TAP dự kiến nhận"] = (
+            brand_df["target_gmv"]
+            * brand_df["commission"]
             / 100
         )
 
-        display_brand.columns = [
-            "ID",
-            "Brand",
-            "Commission (%)",
-            "GMV mục tiêu",
-            "Ghi chú",
-            "TAP dự kiến nhận"
-        ]
+        display = brand_df.copy()
 
-        display_brand = display_brand[
+        display["GMV mục tiêu"] = (
+            display["target_gmv"]
+            .apply(money)
+        )
+
+        display["TAP dự kiến nhận"] = (
+            display["TAP dự kiến nhận"]
+            .apply(money)
+        )
+
+        display = display[
             [
-                "Brand",
-                "Commission (%)",
+                "brand_name",
+                "commission",
                 "GMV mục tiêu",
                 "TAP dự kiến nhận",
-                "Ghi chú"
+                "note"
             ]
         ]
 
-        st.dataframe(
-            display_brand,
-            use_container_width=True,
-            hide_index=True
+        display.columns = [
+            "Brand",
+            "Commission (%)",
+            "GMV mục tiêu",
+            "TAP dự kiến nhận",
+            "Ghi chú"
+        ]
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "🏷️ Tổng Brand",
+            len(brand_df)
         )
 
-        csv = filtered_brands.to_csv(
-            index=False
-        ).encode("utf-8-sig")
+        col2.metric(
+            "🔎 Kết quả",
+            len(display)
+        )
 
-        st.download_button(
-            "📥 Xuất danh sách Brand",
-            data=csv,
-            file_name="brand_database.csv",
-            mime="text/csv"
+        col3.metric(
+            "🎯 Tổng GMV mục tiêu",
+            money(
+                brand_df["target_gmv"].sum()
+            )
+        )
+
+        st.dataframe(
+            display,
+            use_container_width=True,
+            hide_index=True
         )
 
 
@@ -1409,175 +1129,177 @@ elif page == "📊 Monthly Analytics":
 
     st.info(
         "📌 Hệ thống lấy: "
-        "A = Ngày | "
-        "F = KOC/NST | "
-        "L = Brand | "
-        "M = GMV | "
+        "A = Ngày | F = KOC/NST | "
+        "L = Brand | M = GMV | "
         "AC = Hoa hồng TAP"
     )
 
     st.divider()
 
-
-    # =====================================================
-    # UPLOAD FILE
-    # =====================================================
-
     st.subheader(
         "📥 Upload báo cáo TikTok"
     )
 
-    analytics_file = st.file_uploader(
+    uploaded_file = st.file_uploader(
         "Chọn file Custom Report TikTok",
         type=["xlsx", "xls"],
         key="analytics_upload"
     )
 
 
-    if analytics_file is not None:
+    # =====================================================
+    # READ FILE
+    # =====================================================
+
+    if uploaded_file:
 
         try:
 
-            # =================================================
-            # CHỈ ĐỌC 7 CỘT CẦN THIẾT
+            # -------------------------------------------------
+            # QUAN TRỌNG:
+            # ĐỌC THEO VỊ TRÍ CỘT
             #
-            # A = Ngày
-            # C = Campaign ID
-            # D = Campaign Name
-            # F = KOC/NST
-            # L = Brand
-            # M = GMV
-            # AC = AC
-            # =================================================
+            # A = 0
+            # F = 5
+            # L = 11
+            # M = 12
+            # AC = 28
+            # -------------------------------------------------
 
-            raw_df = pd.read_excel(
-                analytics_file,
-                usecols="A,C,D,F,L,M,AC"
+            raw = pd.read_excel(
+                uploaded_file,
+                usecols=[0, 5, 11, 12, 28]
             )
+
 
             st.success(
-                f"Đã đọc {len(raw_df):,} dòng dữ liệu."
+                f"Đã đọc {len(raw):,} dòng dữ liệu."
             )
 
 
-            # =================================================
-            # MAP 7 CỘT SAU KHI READ
-            # =================================================
+            # -------------------------------------------------
+            # ĐỔI TÊN
+            # -------------------------------------------------
 
-            date_col = raw_df.iloc[:, 0]
-
-            campaign_id_col = raw_df.iloc[:, 1]
-
-            campaign_name_col = raw_df.iloc[:, 2]
-
-            creator_col = raw_df.iloc[:, 3]
-
-            store_col = raw_df.iloc[:, 4]
-
-            gmv_col = raw_df.iloc[:, 5]
-
-            ac_col = raw_df.iloc[:, 6]
+            raw.columns = [
+                "report_date",
+                "creator_name",
+                "store_name",
+                "gmv",
+                "ac"
+            ]
 
 
-            # =================================================
-            # PREPARE DATA
-            # =================================================
+            # -------------------------------------------------
+            # BỎ DÒNG TÓM TẮT
+            # -------------------------------------------------
 
-            analytics_upload = pd.DataFrame()
+            raw = raw[
+                raw["report_date"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                != "tóm tắt"
+            ].copy()
 
 
-            # Ngày
-            analytics_upload["report_date"] = (
-                date_col.apply(
-                    parse_tiktok_date
+            # -------------------------------------------------
+            # NGÀY
+            #
+            # Ví dụ:
+            # 2026-09-01-2026-09-30
+            #
+            # => 2026-09-01
+            # -------------------------------------------------
+
+            raw["report_date"] = (
+                parse_tiktok_date(
+                    raw["report_date"]
                 )
             )
 
 
-            # Campaign ID
-            analytics_upload["campaign_id"] = (
-                campaign_id_col
+            # -------------------------------------------------
+            # KOC
+            # -------------------------------------------------
+
+            raw["creator_name"] = (
+                raw["creator_name"]
                 .fillna("")
                 .astype(str)
                 .str.strip()
             )
 
 
-            # Campaign Name
-            analytics_upload["campaign_name"] = (
-                campaign_name_col
+            # -------------------------------------------------
+            # BRAND
+            #
+            # Trong file có thể có \r
+            # -------------------------------------------------
+
+            raw["store_name"] = (
+                raw["store_name"]
                 .fillna("")
                 .astype(str)
+                .str.replace(
+                    "\r",
+                    "",
+                    regex=False
+                )
                 .str.strip()
             )
 
 
-            # KOC/NST
-            analytics_upload["creator_name"] = (
-                creator_col
-                .fillna("")
-                .astype(str)
-                .str.strip()
-            )
-
-
-            # Brand
-            analytics_upload["store_name"] = (
-                store_col
-                .fillna("")
-                .astype(str)
-                .str.strip()
-            )
-
-
+            # -------------------------------------------------
             # GMV = M
-            analytics_upload["gmv"] = clean_number(
-                gmv_col
+            # -------------------------------------------------
+
+            raw["gmv"] = clean_money(
+                raw["gmv"]
             )
 
 
+            # -------------------------------------------------
             # AC = AC
-            analytics_upload["ac"] = clean_number(
-                ac_col
+            #
+            # ĐÂY LÀ CỘT MÌNH DÙNG
+            # -------------------------------------------------
+
+            raw["ac"] = clean_money(
+                raw["ac"]
             )
 
 
-            # =================================================
-            # REMOVE ROWS WITHOUT DATE
-            # =================================================
+            # -------------------------------------------------
+            # CHỈ GIỮ DÒNG CÓ NGÀY
+            # -------------------------------------------------
 
-            analytics_upload = analytics_upload[
-                analytics_upload["report_date"].notna()
+            raw = raw[
+                raw["report_date"].notna()
             ].copy()
 
 
-            # =================================================
-            # CREATE MONTH
-            # =================================================
-
-            analytics_upload["report_month"] = (
-                analytics_upload["report_date"]
-                .dt.to_period("M")
-                .astype(str)
-            )
-
-
-            # =================================================
-            # CHECK DATA
-            # =================================================
-
-            if analytics_upload.empty:
+            if raw.empty:
 
                 st.error(
-                    "❌ Không đọc được cột Ngày. "
-                    "Hãy kiểm tra lại cột A trong file TikTok."
+                    "Không đọc được ngày từ cột A."
                 )
 
             else:
 
+                # -------------------------------------------------
+                # THÁNG
+                # -------------------------------------------------
+
+                raw["report_month"] = (
+                    raw["report_date"]
+                    .dt.strftime("%Y-%m")
+                )
+
+
                 st.success(
                     f"✅ Đã xử lý "
-                    f"{len(analytics_upload):,} dòng hợp lệ."
+                    f"{len(raw):,} dòng hợp lệ."
                 )
 
 
@@ -1589,7 +1311,7 @@ elif page == "📊 Monthly Analytics":
                     "👀 Preview dữ liệu"
                 )
 
-                preview = analytics_upload[
+                preview = raw[
                     [
                         "report_date",
                         "report_month",
@@ -1637,43 +1359,18 @@ elif page == "📊 Monthly Analytics":
 
 
                 # =================================================
-                # MONTHS
-                # =================================================
-
-                months_in_file = sorted(
-                    analytics_upload[
-                        "report_month"
-                    ].unique()
-                )
-
-
-                st.write(
-                    "📅 Tháng phát hiện trong file:",
-                    ", ".join(
-                        months_in_file
-                    )
-                )
-
-
-                # =================================================
                 # FILE SUMMARY
                 # =================================================
 
-                file_gmv = (
-                    analytics_upload["gmv"]
-                    .sum()
-                )
+                total_gmv = raw["gmv"].sum()
 
-                file_ac = (
-                    analytics_upload["ac"]
-                    .sum()
-                )
+                total_ac = raw["ac"].sum()
 
-                file_rate = (
-                    file_ac
-                    / file_gmv
+                ac_rate = (
+                    total_ac
+                    / total_gmv
                     * 100
-                    if file_gmv != 0
+                    if total_gmv != 0
                     else 0
                 )
 
@@ -1684,16 +1381,16 @@ elif page == "📊 Monthly Analytics":
                 with col1:
 
                     st.metric(
-                        "💰 GMV trong file",
-                        money(file_gmv)
+                        "💰 Tổng GMV",
+                        money(total_gmv)
                     )
 
 
                 with col2:
 
                     st.metric(
-                        "💵 AC trong file",
-                        money(file_ac)
+                        "💵 Tổng AC",
+                        money(total_ac)
                     )
 
 
@@ -1701,8 +1398,24 @@ elif page == "📊 Monthly Analytics":
 
                     st.metric(
                         "📊 AC / GMV",
-                        percent(file_rate)
+                        percent(ac_rate)
                     )
+
+
+                # =================================================
+                # MONTHS
+                # =================================================
+
+                months_found = sorted(
+                    raw["report_month"]
+                    .unique()
+                )
+
+
+                st.write(
+                    "📅 Tháng phát hiện:",
+                    ", ".join(months_found)
+                )
 
 
                 st.divider()
@@ -1712,15 +1425,9 @@ elif page == "📊 Monthly Analytics":
                 # IMPORT
                 # =================================================
 
-                st.subheader(
-                    "🚀 Import vào hệ thống"
-                )
-
-
                 st.warning(
-                    "Nếu tháng đã tồn tại trong Database, "
-                    "hệ thống sẽ XÓA dữ liệu cũ của tháng đó "
-                    "rồi import dữ liệu mới để tránh bị nhân đôi."
+                    "Nếu tháng đã tồn tại, dữ liệu tháng đó "
+                    "sẽ được thay thế để tránh trùng."
                 )
 
 
@@ -1729,11 +1436,11 @@ elif page == "📊 Monthly Analytics":
                     type="primary"
                 ):
 
-                    # =================================================
-                    # DELETE OLD MONTHS
-                    # =================================================
+                    # -------------------------------------------------
+                    # XÓA DỮ LIỆU CŨ CỦA THÁNG
+                    # -------------------------------------------------
 
-                    for month in months_in_file:
+                    for month in months_found:
 
                         cursor.execute(
                             """
@@ -1744,24 +1451,22 @@ elif page == "📊 Monthly Analytics":
                         )
 
 
-                    # =================================================
-                    # PREPARE BULK INSERT
-                    # =================================================
+                    # -------------------------------------------------
+                    # INSERT DATA
+                    # -------------------------------------------------
 
-                    insert_data = []
+                    insert_rows = []
 
-                    for row in analytics_upload.itertuples(
+                    for row in raw.itertuples(
                         index=False
                     ):
 
-                        insert_data.append(
+                        insert_rows.append(
                             (
                                 row.report_date.strftime(
                                     "%Y-%m-%d"
                                 ),
                                 row.report_month,
-                                row.campaign_id,
-                                row.campaign_name,
                                 row.creator_name,
                                 row.store_name,
                                 float(row.gmv),
@@ -1770,26 +1475,20 @@ elif page == "📊 Monthly Analytics":
                         )
 
 
-                    # =================================================
-                    # FAST INSERT
-                    # =================================================
-
                     cursor.executemany(
                         """
                         INSERT INTO analytics
                         (
                             report_date,
                             report_month,
-                            campaign_id,
-                            campaign_name,
                             creator_name,
                             store_name,
                             gmv,
                             ac
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        insert_data
+                        insert_rows
                     )
 
 
@@ -1798,22 +1497,15 @@ elif page == "📊 Monthly Analytics":
 
                     st.success(
                         f"🎉 Import thành công "
-                        f"{len(insert_data):,} dòng!"
+                        f"{len(insert_rows):,} dòng!"
                     )
 
 
                     st.rerun()
 
 
-        except Exception as e:
-
-            st.error(
-                f"❌ Không thể đọc file: {e}"
-            )
-
-
     # =====================================================
-    # LOAD ANALYTICS DATABASE
+    # DASHBOARD DATA
     # =====================================================
 
     analytics_data = pd.read_sql(
@@ -1832,7 +1524,6 @@ elif page == "📊 Monthly Analytics":
             "Hãy upload file TikTok ở trên."
         )
 
-
     else:
 
         st.divider()
@@ -1843,66 +1534,62 @@ elif page == "📊 Monthly Analytics":
 
 
         # =================================================
-        # FILTER
+        # FILTER MONTH
         # =================================================
+
+        months = sorted(
+            analytics_data[
+                "report_month"
+            ].dropna().unique(),
+            reverse=True
+        )
+
 
         col1, col2 = st.columns(2)
 
 
         with col1:
 
-            month_options = sorted(
-                analytics_data[
-                    "report_month"
-                ]
-                .dropna()
-                .unique(),
-                reverse=True
-            )
-
             selected_month = st.selectbox(
                 "📅 Chọn tháng",
-                month_options
+                months
             )
 
 
-        with col2:
-
-            brand_options = [
-                "Tất cả"
-            ] + sorted(
-                analytics_data[
-                    analytics_data[
-                        "report_month"
-                    ]
-                    == selected_month
-                ]["store_name"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-
-            selected_brand = st.selectbox(
-                "🏷️ Chọn Brand",
-                brand_options
-            )
-
-
-        # =================================================
-        # FILTER DATA
-        # =================================================
-
-        dashboard_df = analytics_data[
+        month_data = analytics_data[
             analytics_data["report_month"]
             == selected_month
         ].copy()
 
 
+        # =================================================
+        # FILTER BRAND
+        # =================================================
+
+        brands = [
+            "Tất cả"
+        ] + sorted(
+            month_data[
+                "store_name"
+            ]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+
+        with col2:
+
+            selected_brand = st.selectbox(
+                "🏷️ Chọn Brand",
+                brands
+            )
+
+
         if selected_brand != "Tất cả":
 
-            dashboard_df = dashboard_df[
-                dashboard_df["store_name"]
+            month_data = month_data[
+                month_data["store_name"]
                 == selected_brand
             ]
 
@@ -1912,28 +1599,27 @@ elif page == "📊 Monthly Analytics":
         # =================================================
 
         total_gmv = (
-            dashboard_df["gmv"]
+            month_data["gmv"]
             .sum()
         )
+
 
         total_ac = (
-            dashboard_df["ac"]
+            month_data["ac"]
             .sum()
         )
 
-        ac_percent = (
+
+        ac_rate = (
             total_ac
             / total_gmv
             * 100
-            if total_gmv != 0
+            if total_gmv
             else 0
         )
 
 
-        kpi_default = 10000000.0
-
-
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
 
 
         with col1:
@@ -1956,206 +1642,48 @@ elif page == "📊 Monthly Analytics":
 
             st.metric(
                 "📊 AC / GMV",
-                percent(ac_percent)
+                percent(ac_rate)
             )
 
-
-        with col4:
-
-            kpi = st.number_input(
-                "🎯 KPI",
-                min_value=0.0,
-                value=kpi_default,
-                step=1000000.0
-            )
-
-            achievement = (
-                total_ac
-                / kpi
-                * 100
-                if kpi > 0
-                else 0
-            )
-
-            st.metric(
-                "% đạt KPI",
-                percent(achievement)
-            )
-
-
-        # =================================================
-        # TOP BRAND + TOP KOC
-        # =================================================
 
         st.divider()
-
-
-        col1, col2 = st.columns(2)
 
 
         # =================================================
         # TOP BRAND
         # =================================================
 
-        with col1:
-
-            st.subheader(
-                "🏆 Top Brand theo AC"
-            )
-
-
-            top_brand = (
-                dashboard_df
-                .groupby(
-                    "store_name",
-                    as_index=False
-                )
-                .agg(
-                    GMV=("gmv", "sum"),
-                    AC=("ac", "sum")
-                )
-                .sort_values(
-                    "AC",
-                    ascending=False
-                )
-                .head(10)
-            )
-
-
-            if not top_brand.empty:
-
-                top_brand[
-                    "AC / GMV (%)"
-                ] = (
-                    top_brand["AC"]
-                    / top_brand["GMV"]
-                    * 100
-                ).fillna(0)
-
-
-                top_brand_display = (
-                    top_brand.copy()
-                )
-
-
-                top_brand_display["GMV"] = (
-                    top_brand_display["GMV"]
-                    .apply(money)
-                )
-
-
-                top_brand_display["AC"] = (
-                    top_brand_display["AC"]
-                    .apply(money)
-                )
-
-
-                st.dataframe(
-                    top_brand_display,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-
-        # =================================================
-        # TOP KOC
-        # =================================================
-
-        with col2:
-
-            st.subheader(
-                "👑 Top KOC/NST theo AC"
-            )
-
-
-            top_creator = (
-                dashboard_df
-                .groupby(
-                    "creator_name",
-                    as_index=False
-                )
-                .agg(
-                    GMV=("gmv", "sum"),
-                    AC=("ac", "sum")
-                )
-                .sort_values(
-                    "AC",
-                    ascending=False
-                )
-                .head(10)
-            )
-
-
-            top_creator_display = (
-                top_creator.copy()
-            )
-
-
-            top_creator_display["GMV"] = (
-                top_creator_display["GMV"]
-                .apply(money)
-            )
-
-
-            top_creator_display["AC"] = (
-                top_creator_display["AC"]
-                .apply(money)
-            )
-
-
-            st.dataframe(
-                top_creator_display,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-        # =================================================
-        # BRAND ANALYSIS
-        # =================================================
-
-        st.divider()
-
         st.subheader(
-            "📊 Phân tích Brand"
+            "🏆 Top Brand"
         )
 
 
-        brand_analysis = (
-            dashboard_df
+        top_brand = (
+            month_data
             .groupby(
                 "store_name",
                 as_index=False
             )
             .agg(
                 GMV=("gmv", "sum"),
-                AC=("ac", "sum"),
-                KOC=("creator_name", "nunique")
+                AC=("ac", "sum")
             )
-        )
-
-
-        brand_analysis[
-            "AC / GMV (%)"
-        ] = (
-            brand_analysis["AC"]
-            / brand_analysis["GMV"]
-            * 100
-        ).fillna(0)
-
-
-        brand_analysis = (
-            brand_analysis
             .sort_values(
                 "AC",
                 ascending=False
             )
+            .head(20)
         )
 
 
-        brand_display = (
-            brand_analysis.copy()
-        )
+        top_brand["AC / GMV (%)"] = (
+            top_brand["AC"]
+            / top_brand["GMV"]
+            * 100
+        ).fillna(0)
+
+
+        brand_display = top_brand.copy()
 
 
         brand_display["GMV"] = (
@@ -2178,17 +1706,138 @@ elif page == "📊 Monthly Analytics":
 
 
         # =================================================
+        # TOP KOC
+        # =================================================
+
+        st.subheader(
+            "👑 Top KOC/NST"
+        )
+
+
+        top_koc = (
+            month_data
+            .groupby(
+                "creator_name",
+                as_index=False
+            )
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum")
+            )
+            .sort_values(
+                "AC",
+                ascending=False
+            )
+            .head(20)
+        )
+
+
+        top_koc["AC / GMV (%)"] = (
+            top_koc["AC"]
+            / top_koc["GMV"]
+            * 100
+        ).fillna(0)
+
+
+        koc_display = top_koc.copy()
+
+
+        koc_display["GMV"] = (
+            koc_display["GMV"]
+            .apply(money)
+        )
+
+
+        koc_display["AC"] = (
+            koc_display["AC"]
+            .apply(money)
+        )
+
+
+        st.dataframe(
+            koc_display,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        # =================================================
+        # BRAND ANALYSIS
+        # =================================================
+
+        st.divider()
+
+        st.subheader(
+            "📊 Phân tích Brand"
+        )
+
+
+        brand_analysis = (
+            month_data
+            .groupby(
+                "store_name",
+                as_index=False
+            )
+            .agg(
+                GMV=("gmv", "sum"),
+                AC=("ac", "sum"),
+                KOC=("creator_name", "nunique")
+            )
+        )
+
+
+        brand_analysis["AC / GMV (%)"] = (
+            brand_analysis["AC"]
+            / brand_analysis["GMV"]
+            * 100
+        ).fillna(0)
+
+
+        brand_analysis = (
+            brand_analysis
+            .sort_values(
+                "AC",
+                ascending=False
+            )
+        )
+
+
+        analysis_display = (
+            brand_analysis.copy()
+        )
+
+
+        analysis_display["GMV"] = (
+            analysis_display["GMV"]
+            .apply(money)
+        )
+
+
+        analysis_display["AC"] = (
+            analysis_display["AC"]
+            .apply(money)
+        )
+
+
+        st.dataframe(
+            analysis_display,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        # =================================================
         # MONTHLY SUMMARY
         # =================================================
 
         st.divider()
 
         st.subheader(
-            "📅 Tổng quan các tháng"
+            "📅 Tổng quan theo tháng"
         )
 
 
-        monthly_summary = (
+        monthly = (
             analytics_data
             .groupby(
                 "report_month",
@@ -2203,27 +1852,14 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        monthly_summary[
-            "AC / GMV (%)"
-        ] = (
-            monthly_summary["AC"]
-            / monthly_summary["GMV"]
+        monthly["AC / GMV (%)"] = (
+            monthly["AC"]
+            / monthly["GMV"]
             * 100
         ).fillna(0)
 
 
-        monthly_summary = (
-            monthly_summary
-            .sort_values(
-                "report_month",
-                ascending=False
-            )
-        )
-
-
-        monthly_display = (
-            monthly_summary.copy()
-        )
+        monthly_display = monthly.copy()
 
 
         monthly_display["GMV"] = (
@@ -2238,16 +1874,6 @@ elif page == "📊 Monthly Analytics":
         )
 
 
-        monthly_display.columns = [
-            "Tháng",
-            "GMV",
-            "AC",
-            "KOC",
-            "Brand",
-            "AC / GMV (%)"
-        ]
-
-
         st.dataframe(
             monthly_display,
             use_container_width=True,
@@ -2256,62 +1882,56 @@ elif page == "📊 Monthly Analytics":
 
 
         # =================================================
-        # RAW DATA
+        # DETAIL
         # =================================================
-
-        st.divider()
 
         with st.expander(
             "🔍 Xem dữ liệu chi tiết"
         ):
 
-            detail_display = dashboard_df[
+            detail = month_data[
                 [
                     "report_date",
                     "creator_name",
                     "store_name",
                     "gmv",
-                    "ac",
-                    "campaign_name"
+                    "ac"
                 ]
             ].copy()
 
 
-            detail_display["report_date"] = (
+            detail["report_date"] = (
                 pd.to_datetime(
-                    detail_display[
-                        "report_date"
-                    ]
-                ).dt.strftime(
-                    "%d/%m/%Y"
+                    detail["report_date"],
+                    errors="coerce"
                 )
+                .dt.strftime("%d/%m/%Y")
             )
 
 
-            detail_display["gmv"] = (
-                detail_display["gmv"]
+            detail["gmv"] = (
+                detail["gmv"]
                 .apply(money)
             )
 
 
-            detail_display["ac"] = (
-                detail_display["ac"]
+            detail["ac"] = (
+                detail["ac"]
                 .apply(money)
             )
 
 
-            detail_display.columns = [
+            detail.columns = [
                 "Ngày",
                 "KOC/NST",
                 "Brand",
                 "GMV",
-                "AC",
-                "Campaign"
+                "AC"
             ]
 
 
             st.dataframe(
-                detail_display,
+                detail,
                 use_container_width=True,
                 hide_index=True
             )
@@ -2321,9 +1941,13 @@ elif page == "📊 Monthly Analytics":
         # DOWNLOAD
         # =================================================
 
-        csv = dashboard_df.to_csv(
-            index=False
-        ).encode("utf-8-sig")
+        csv = (
+            month_data
+            .to_csv(
+                index=False
+            )
+            .encode("utf-8-sig")
+        )
 
 
         st.download_button(
