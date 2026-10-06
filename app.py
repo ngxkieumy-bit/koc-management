@@ -173,95 +173,134 @@ elif page == "👤 KOC Database":
                     )
 
 
-    # -------------------------
-    # CHECK KOC
-    # -------------------------
+    # =========================
+# CHECK KOC - BULK
+# =========================
 
-    with tab2:
+with tab2:
 
-        st.subheader(
-            "🔍 Kiểm tra danh sách KOC"
-        )
+    st.subheader("🔍 Kiểm tra hàng loạt KOC")
 
-        usernames = st.text_area(
-            "Paste username (mỗi dòng 1 username)",
-            placeholder="@abc\n@xyz\n@mymy"
-        )
+    usernames = st.text_area(
+        "Paste username - mỗi dòng 1 username",
+        placeholder="@abc\n@xyz\n@mymy",
+        height=180
+    )
 
-        if st.button("🔎 Kiểm tra"):
+    if st.button("🔎 Kiểm tra danh sách", type="primary"):
 
-            if usernames.strip():
+        if not usernames.strip():
 
-                username_list = []
+            st.warning("Vui lòng nhập ít nhất 1 username.")
 
-                for username in usernames.splitlines():
+        else:
 
-                    username = username.strip()
+            username_list = []
 
-                    if username:
+            for username in usernames.splitlines():
 
-                        if not username.startswith("@"):
-                            username = "@" + username
+                username = username.strip()
 
+                if username:
+
+                    if not username.startswith("@"):
+                        username = "@" + username
+
+                    if username not in username_list:
                         username_list.append(username)
 
+            placeholders = ",".join(
+                ["?"] * len(username_list)
+            )
 
-                placeholders = ",".join(
-                    ["?"] * len(username_list)
-                )
-
-                query = f"""
+            query = f"""
                 SELECT username, phone, name,
                        follower, category
                 FROM koc
                 WHERE username IN ({placeholders})
-                """
+            """
 
-                result = pd.read_sql(
-                    query,
-                    conn,
-                    params=username_list
-                )
+            result = pd.read_sql(
+                query,
+                conn,
+                params=username_list
+            )
 
-                found = set(result["username"])
+            found = set(result["username"])
 
-                output = []
+            output = []
 
-                for username in username_list:
+            for username in username_list:
 
-                    if username in found:
+                if username in found:
 
-                        row = result[
-                            result["username"] == username
-                        ].iloc[0]
+                    row = result[
+                        result["username"] == username
+                    ].iloc[0]
 
-                        output.append({
-                            "Username": username,
-                            "Trạng thái": "✅ ĐÃ CÓ",
-                            "Số điện thoại": row["phone"],
-                            "Tên": row["name"],
-                            "Follower": row["follower"],
-                            "Category": row["category"]
-                        })
+                    output.append({
+                        "Username": username,
+                        "Trạng thái": "✅ ĐÃ CÓ",
+                        "Số điện thoại": row["phone"],
+                        "Tên": row["name"],
+                        "Follower": row["follower"],
+                        "Category": row["category"]
+                    })
 
-                    else:
+                else:
 
-                        output.append({
-                            "Username": username,
-                            "Trạng thái": "❌ CHƯA CÓ",
-                            "Số điện thoại": "",
-                            "Tên": "",
-                            "Follower": "",
-                            "Category": ""
-                        })
+                    output.append({
+                        "Username": username,
+                        "Trạng thái": "❌ CHƯA CÓ",
+                        "Số điện thoại": "",
+                        "Tên": "",
+                        "Follower": "",
+                        "Category": ""
+                    })
 
-                output_df = pd.DataFrame(output)
+            output_df = pd.DataFrame(output)
 
-                st.dataframe(
-                    output_df,
-                    use_container_width=True
-                )
+            # KPI
+            total = len(output_df)
+            found_count = len(output_df[
+                output_df["Trạng thái"] == "✅ ĐÃ CÓ"
+            ])
+            not_found_count = total - found_count
 
-                st.success(
-                    f"Đã kiểm tra {len(username_list)} KOC."
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Tổng kiểm tra", total)
+
+            with col2:
+                st.metric("✅ Đã có", found_count)
+
+            with col3:
+                st.metric("❌ Chưa có", not_found_count)
+
+            st.divider()
+
+            st.dataframe(
+                output_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Chỉ lấy những KOC đã có SĐT
+            phone_list = output_df[
+                output_df["Trạng thái"] == "✅ ĐÃ CÓ"
+            ]["Số điện thoại"].dropna()
+
+            phone_text = "\n".join(
+                str(phone)
+                for phone in phone_list
+                if str(phone).strip()
+            )
+
+            if phone_text:
+
+                st.text_area(
+                    "📱 Danh sách SĐT",
+                    phone_text,
+                    height=150
                 )
