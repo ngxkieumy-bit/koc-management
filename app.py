@@ -1503,6 +1503,9 @@ elif page == "📊 Monthly Analytics":
 
                     st.rerun()
 
+        except Exception as e:
+            st.error(f"❌ Không thể đọc file TikTok: {e}")
+
 
     # =====================================================
     # DASHBOARD DATA
