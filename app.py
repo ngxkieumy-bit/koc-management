@@ -86,13 +86,176 @@ elif page == "👤 KOC Database":
 
     st.header("👤 KOC Database")
 
-    tab1, tab2, tab3 = st.tabs([
-        "➕ Thêm KOC",
-        "🔍 Kiểm tra KOC",
-        "📥 Import Excel"
-    ])
+   tab1, tab2, tab3, tab4 = st.tabs([
+    "➕ Thêm KOC",
+    "🔍 Kiểm tra KOC",
+    "📥 Import Excel",
+    "📋 KOC List"
+])
+                st.error(
+                    f"Không thể đọc file: {e}"
+                )
+    # =========================
+    # KOC LIST
+    # =========================
 
+    with tab4:
 
+        st.subheader("📋 Danh sách KOC")
+
+        # Lấy toàn bộ dữ liệu
+        all_koc = pd.read_sql(
+            """
+            SELECT
+                id,
+                username,
+                phone,
+                name,
+                follower,
+                category,
+                note
+            FROM koc
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+        # =========================
+        # FILTER
+        # =========================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            search = st.text_input(
+                "🔎 Tìm KOC",
+                placeholder="Username / tên / số điện thoại"
+            )
+
+        with col2:
+
+            categories = [
+                "Tất cả"
+            ] + sorted(
+                all_koc["category"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+
+            category_filter = st.selectbox(
+                "🏷️ Ngành hàng",
+                categories
+            )
+
+        # =========================
+        # APPLY SEARCH
+        # =========================
+
+        filtered = all_koc.copy()
+
+        if search.strip():
+
+            search_text = search.strip().lower()
+
+            filtered = filtered[
+                filtered["username"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+                |
+                filtered["name"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+                |
+                filtered["phone"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+            ]
+
+        if category_filter != "Tất cả":
+
+            filtered = filtered[
+                filtered["category"]
+                == category_filter
+            ]
+
+        # =========================
+        # KPI
+        # =========================
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "👤 Tổng KOC",
+                len(all_koc)
+            )
+
+        with col2:
+            st.metric(
+                "🔎 Kết quả",
+                len(filtered)
+            )
+
+        with col3:
+            st.metric(
+                "📱 Có SĐT",
+                filtered["phone"]
+                .replace("", pd.NA)
+                .notna()
+                .sum()
+            )
+
+        st.divider()
+
+        # =========================
+        # TABLE
+        # =========================
+
+        display_df = filtered[
+            [
+                "username",
+                "phone",
+                "name",
+                "follower",
+                "category",
+                "note"
+            ]
+        ].copy()
+
+        display_df.columns = [
+            "Username",
+            "Số điện thoại",
+            "Tên KOC",
+            "Follower",
+            "Ngành hàng",
+            "Ghi chú"
+        ]
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # =========================
+        # DOWNLOAD
+        # =========================
+
+        csv = filtered.to_csv(
+            index=False
+        ).encode("utf-8-sig")
+
+        st.download_button(
+            "📥 Xuất danh sách KOC",
+            data=csv,
+            file_name="koc_database.csv",
+            mime="text/csv"
+        )
     # =========================
     # ADD KOC
     # =========================
