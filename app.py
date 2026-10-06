@@ -92,9 +92,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📥 Import Excel",
     "📋 KOC List"
 ])
-                st.error(
-                    f"Không thể đọc file: {e}"
-                )
+
     # =========================
     # KOC LIST
     # =========================
