@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
+import base64
 
 
 # =========================================================
@@ -93,6 +94,33 @@ CREATE TABLE IF NOT EXISTS total_revenue_targets (
 """)
 
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value BLOB
+)
+""")
+
+conn.commit()
+
+def get_setting(key):
+    row = cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else None
+
+def save_setting(key, value):
+    cursor.execute("""INSERT INTO app_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (key, value))
+    conn.commit()
+
+def delete_setting(key):
+    cursor.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+    conn.commit()
+
+def image_data_uri(data, mime):
+    if not data:
+        return None
+    return f"data:{mime};base64,{base64.b64encode(data).decode('utf-8')}"
+
+
 # =========================================================
 # DATABASE MIGRATION
 # =========================================================
@@ -124,8 +152,9 @@ conn.commit()
 
 st.set_page_config(
     page_title="KOC Management & Analytics",
-    page_icon="📊",
-    layout="wide"
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 
@@ -139,6 +168,24 @@ def money(value):
 
 def percent(value):
     return f"{value:.2f}%"
+
+
+def normalize_month_value(value):
+    """Chuẩn hóa tháng về YYYY-MM để các nguồn dữ liệu match nhau."""
+    if pd.isna(value):
+        return ""
+
+    text = str(value).strip()
+
+    if len(text) == 7 and text[4] == "-":
+        return text
+
+    parsed = pd.to_datetime(value, errors="coerce")
+
+    if pd.isna(parsed):
+        return text
+
+    return parsed.strftime("%Y-%m")
 
 
 def get_target_cycle(month_text):
@@ -217,44 +264,92 @@ def parse_tiktok_date(series):
 
 
 # =========================================================
-# HEADER
+# GIAO DIỆN / THEME
 # =========================================================
 
-st.title(
-    "📊 KOC Management & Analytics"
+logo_bytes = get_setting("logo")
+bg_bytes = get_setting("background")
+logo_mime = get_setting("logo_mime") or "image/png"
+bg_mime = get_setting("background_mime") or "image/jpeg"
+logo_uri = image_data_uri(logo_bytes, logo_mime)
+bg_uri = image_data_uri(bg_bytes, bg_mime)
+bg_css = f"url('{bg_uri}')" if bg_uri else "linear-gradient(135deg, #fff8fa 0%, #fdecef 45%, #f8e1e7 100%)"
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{ background: {bg_css} center center / cover fixed no-repeat; }}
+    .stApp::before {{ content: ""; position: fixed; inset: 0; background: rgba(255,248,250,.82); z-index:-1; }}
+    [data-testid="stSidebar"] {{ background: linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,244,247,.97)); border-right:1px solid #f0d6dd; }}
+    .app-logo-wrap {{ display:flex; align-items:center; gap:10px; padding:8px 4px 16px; border-bottom:1px solid #f2dbe1; margin-bottom:14px; }}
+    .app-logo {{ width:54px; height:54px; object-fit:contain; border-radius:14px; background:white; border:1px solid #f0d6dd; padding:5px; }}
+    .app-logo-title {{ font-size:18px; font-weight:800; line-height:1.05; color:#7e3145; }}
+    .app-logo-sub {{ font-size:11px; color:#8b777c; margin-top:4px; }}
+    .menu-label {{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a17984; font-weight:700; margin:8px 0 6px 4px; }}
+    div.stButton > button {{ border-radius:12px; border:1px solid #efd3db; background:rgba(255,255,255,.9); color:#3b2a2f; font-weight:600; min-height:42px; }}
+    div.stButton > button:hover {{ border-color:#d85b78; color:#b94663; background:#fff1f4; }}
+    .nav-active button {{ background:#f7dce4 !important; border-color:#e7b4c1 !important; color:#a63d58 !important; font-weight:800 !important; }}
+    .nav-child button {{ text-align:left !important; padding-left:18px !important; font-size:13px !important; background:#fff7f9 !important; border-color:#f1dce2 !important; }}
+    [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:14px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); }}
+    h1,h2,h3 {{ color:#3a252b; }}
+    </style>
+    """, unsafe_allow_html=True
 )
 
-st.write(
-    "Hệ thống quản lý KOC/KOL, Brand và phân tích dữ liệu TikTok"
-)
+if logo_uri:
+    logo_html = f'<img class="app-logo" src="{logo_uri}">'
+else:
+    logo_html = '<div class="app-logo" style="display:flex;align-items:center;justify-content:center;font-size:25px;">✦</div>'
 
-st.divider()
+with st.sidebar:
+    st.markdown(
+        f"<div class=\"app-logo-wrap\">{logo_html}<div><div class=\"app-logo-title\">KOC</div><div class=\"app-logo-sub\">Management & Analytics</div></div></div>",
+        unsafe_allow_html=True
+    )
+    if "page" not in st.session_state:
+        st.session_state.page = "dashboard"
+    if "dash_expanded" not in st.session_state:
+        st.session_state.dash_expanded = True
 
+    st.markdown('<div class="menu-label">MENU</div>', unsafe_allow_html=True)
+    dash_label = "▾  Tổng quan số liệu TAP/Booking" if st.session_state.dash_expanded else "▸  Tổng quan số liệu TAP/Booking"
+    if st.button(dash_label, use_container_width=True, key="nav_dash"):
+        st.session_state.page = "dashboard"
+        st.session_state.dash_expanded = not st.session_state.dash_expanded
+        st.rerun()
 
-# =========================================================
-# MENU
-# =========================================================
+    if st.session_state.dash_expanded:
+        for label,key in [("▣  Dịch vụ Booking","booking"),("◎  Phân tích TAP","tap_target"),("▥  MO/DA (Monthly Analytics)","monthly")]:
+            active = st.session_state.page == key
+            st.markdown(f'<div class="{"nav-active " if active else ""}nav-child">', unsafe_allow_html=True)
+            if st.button(label, use_container_width=True, key=f"nav_{key}"):
+                st.session_state.page = key
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-page = st.sidebar.radio(
-    "MENU",
-    [
-        "🏠 Dashboard",
-        "👤 KOC Database",
-        "🏷️ Brand Database",
-        "📦 Booking Service",
-        "📊 Monthly Analytics",
-        "🎯 TAP Target"
-    ]
-)
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("⚙  Cài đặt","settings")]:
+        active = st.session_state.page == key
+        st.markdown(f'<div class="{"nav-active" if active else ""}">', unsafe_allow_html=True)
+        if st.button(label, use_container_width=True, key=f"nav_{key}"):
+            st.session_state.page = key
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+page = st.session_state.page
+page_titles = {"dashboard":"Tổng quan số liệu TAP/Booking","booking":"Dịch vụ Booking","tap_target":"Phân tích TAP","monthly":"MO/DA (Monthly Analytics)","koc":"DATA KOC lưu trữ","brand":"Danh sách Brand","settings":"Cài đặt"}
+st.title(page_titles.get(page,"KOC Management & Analytics"))
+if page != "settings":
+    st.caption("Hệ thống quản lý KOC/KOL, Brand, TAP và dịch vụ Booking")
 
 
 # =========================================================
 # DASHBOARD
 # =========================================================
 
-if page == "🏠 Dashboard":
+if page == "dashboard":
 
-    st.header("🏠 Dashboard tổng")
+    st.header("Tổng quan số liệu TAP/Booking")
     st.write(
         "Tổng quan hiệu quả KOC/KOL, Brand, TAP và doanh thu Booking."
     )
@@ -306,6 +401,18 @@ if page == "🏠 Dashboard":
         """,
         conn
     )
+
+    # Chuẩn hóa tháng để Dashboard luôn nhận đúng Booking 2026-10,
+    # kể cả khi SQLite đang lưu dưới dạng date/string khác nhau.
+    if not analytics_all.empty:
+        analytics_all["report_month"] = (
+            analytics_all["report_month"].apply(normalize_month_value)
+        )
+
+    if not booking_all.empty:
+        booking_all["contract_month"] = (
+            booking_all["contract_month"].apply(normalize_month_value)
+        )
 
     revenue_targets = pd.read_sql(
         """
@@ -1148,9 +1255,9 @@ if page == "🏠 Dashboard":
         )
 
 
-elif page == "👤 KOC Database":
+elif page == "koc":
 
-    st.header("👤 KOC Database")
+    st.header("DATA KOC lưu trữ")
 
     tab1, tab2, tab3, tab4 = st.tabs(
         [
@@ -1678,7 +1785,7 @@ elif page == "👤 KOC Database":
 # BRAND DATABASE
 # =========================================================
 
-elif page == "🏷️ Brand Database":
+elif page == "brand":
 
     st.header(
         "🏷️ Brand Database"
@@ -2000,9 +2107,9 @@ elif page == "🏷️ Brand Database":
 # MONTHLY ANALYTICS
 # =========================================================
 
-elif page == "🎯 TAP Target":
+elif page == "tap_target":
 
-    st.header("🎯 TAP Target Management")
+    st.header("Phân tích TAP")
     st.write(
         "Theo dõi Target hoa hồng TAP theo tháng và đối chiếu "
         "với hoa hồng thực tế từ dữ liệu TikTok."
@@ -2321,9 +2428,9 @@ elif page == "🎯 TAP Target":
             )
 
 
-elif page == "📦 Booking Service":
+elif page == "booking":
 
-    st.header("📦 Booking Service")
+    st.header("Dịch vụ Booking")
     st.write(
         "Quản lý gói dịch vụ Booking theo tháng, tình trạng chạy "
         "và số tiền đã thanh toán."
@@ -2544,6 +2651,11 @@ elif page == "📦 Booking Service":
         conn
     )
 
+    if not booking_df.empty:
+        booking_df["contract_month"] = (
+            booking_df["contract_month"].apply(normalize_month_value)
+        )
+
     if booking_df.empty:
 
         st.info("Chưa có Booking nào.")
@@ -2722,7 +2834,7 @@ elif page == "📦 Booking Service":
             editor_source,
             use_container_width=True,
             hide_index=True,
-            num_rows="fixed",
+            num_rows="dynamic",
             key="booking_editor",
             column_config={
                 "id": st.column_config.NumberColumn(
@@ -2786,7 +2898,7 @@ elif page == "📦 Booking Service":
         )
 
         st.caption(
-            "💡 Tick trực tiếp Đang chạy/Đã thanh toán hoặc sửa số tiền ngay trên bảng."
+            "💡 Tick trực tiếp Đang chạy/Đã thanh toán, sửa số tiền, hoặc bấm 🗑️ để xóa dòng. Sau đó bấm Lưu tất cả thay đổi."
         )
 
         if st.button(
@@ -2796,8 +2908,44 @@ elif page == "📦 Booking Service":
         ):
 
             updated_count = 0
+            deleted_count = 0
 
+            # Dòng bị bấm 🗑️ sẽ biến mất khỏi edited_booking.
+            # So sánh ID để xóa thật khỏi database.
+            original_ids = set(
+                pd.to_numeric(
+                    filtered_booking["id"],
+                    errors="coerce"
+                )
+                .dropna()
+                .astype(int)
+                .tolist()
+            )
+
+            edited_ids = set(
+                pd.to_numeric(
+                    edited_booking["id"],
+                    errors="coerce"
+                )
+                .dropna()
+                .astype(int)
+                .tolist()
+            )
+
+            deleted_ids = original_ids - edited_ids
+
+            for booking_id in deleted_ids:
+                cursor.execute(
+                    "DELETE FROM booking_services WHERE id = ?",
+                    (int(booking_id),)
+                )
+                deleted_count += 1
+
+            # Cập nhật các dòng còn lại.
             for _, row in edited_booking.iterrows():
+
+                if pd.isna(row.get("id")):
+                    continue
 
                 booking_id = int(row["id"])
 
@@ -2848,7 +2996,6 @@ elif page == "📦 Booking Service":
                 )
 
                 if changed:
-
                     cursor.execute(
                         """
                         UPDATE booking_services
@@ -2874,13 +3021,22 @@ elif page == "📦 Booking Service":
 
             conn.commit()
 
-            st.success(
-                f"✅ Đã lưu {updated_count} Booking."
-            )
+            messages = []
+
+            if updated_count:
+                messages.append(f"✏️ {updated_count} dòng cập nhật")
+
+            if deleted_count:
+                messages.append(f"🗑️ {deleted_count} dòng đã xóa")
+
+            if messages:
+                st.success("✅ " + " • ".join(messages))
+            else:
+                st.info("Không có thay đổi để lưu.")
 
             st.rerun()
 
-elif page == "📊 Monthly Analytics":
+elif page == "monthly":
 
     st.header(
         "📊 Monthly Analytics"
@@ -3747,3 +3903,43 @@ elif page == "📊 Monthly Analytics":
             ),
             mime="text/csv"
         )
+
+
+elif page == "settings":
+    st.header("Cài đặt giao diện")
+    st.caption("Tuỳ chỉnh logo, hình nền và giao diện hồng pastel cho toàn bộ web.")
+    tab1, tab2 = st.tabs(["🎨 Giao diện", "👀 Xem trước"])
+    with tab1:
+        st.subheader("Logo website")
+        logo_upload = st.file_uploader("Tải logo", type=["png","jpg","jpeg","webp"], key="settings_logo")
+        if logo_upload is not None:
+            st.image(logo_upload, width=180)
+            if st.button("💾 Lưu logo", type="primary", key="save_logo"):
+                save_setting("logo", logo_upload.getvalue()); save_setting("logo_mime", logo_upload.type); st.success("Đã lưu logo."); st.rerun()
+        if logo_bytes:
+            st.image(logo_bytes, width=180, caption="Logo hiện tại")
+            if st.button("🗑️ Xoá logo", key="delete_logo"):
+                delete_setting("logo"); delete_setting("logo_mime"); st.rerun()
+        st.divider()
+        st.subheader("Hình nền website")
+        bg_upload = st.file_uploader("Tải hình nền", type=["png","jpg","jpeg","webp"], key="settings_background")
+        if bg_upload is not None:
+            st.image(bg_upload, use_container_width=True)
+            if st.button("💾 Lưu hình nền", type="primary", key="save_background"):
+                save_setting("background", bg_upload.getvalue()); save_setting("background_mime", bg_upload.type); st.success("Đã lưu hình nền."); st.rerun()
+        if bg_bytes:
+            st.image(bg_bytes, use_container_width=True, caption="Hình nền hiện tại")
+            if st.button("🗑️ Khôi phục nền hồng mặc định", key="delete_background"):
+                delete_setting("background"); delete_setting("background_mime"); st.rerun()
+        st.divider()
+        st.subheader("Màu giao diện")
+        st.color_picker("Màu chủ đạo", value="#D85B78")
+        st.info("🎀 Bản này dùng hồng pastel làm màu chủ đạo.")
+    with tab2:
+        st.subheader("Preview")
+        c1,c2 = st.columns([1,2])
+        with c1:
+            if logo_bytes: st.image(logo_bytes, width=180)
+            else: st.markdown("### ✦ KOC")
+        with c2:
+            st.markdown("<div style='background:rgba(255,255,255,.9);padding:24px;border-radius:20px;border:1px solid #f0d6dd;'><h3 style='color:#8d3048;margin-top:0'>Tổng quan số liệu TAP/Booking</h3><p>Giao diện hồng pastel • sidebar menu dạng thu gọn • icon đồng bộ.</p></div>", unsafe_allow_html=True)
