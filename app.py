@@ -2,10 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
-try:
-    import plotly.express as px
-except ImportError:
-    px = None
+import plotly.express as px
 from datetime import date
 
 
@@ -855,158 +852,31 @@ if page == "🏠 Dashboard":
             )
 
         st.divider()
-        st.subheader("📈 Xu hướng theo tháng")
+        st.subheader("📊 Cơ cấu doanh thu tháng")
 
-        monthly_base = (
-            analytics_all.groupby(
-                "report_month",
-                as_index=True
-            )
-            .agg(
-                GMV=("gmv", "sum"),
-                Hoa_hong_thuc_te=("ac", "sum")
-            )
-            if not analytics_all.empty
-            else pd.DataFrame(
-                columns=["GMV", "Hoa_hong_thuc_te"]
-            )
-        )
-
-        booking_monthly = (
-            booking_all.assign(
-                booking_net=(
-                    booking_all["paid_amount"]
-                    - booking_all["koc_paid_amount"]
-                ).clip(lower=0)
-            )
-            .groupby(
-                "contract_month",
-                as_index=True
-            )
-            .agg(
-                Booking_da_thanh_toan=("paid_amount", "sum"),
-                KOC_da_thanh_toan=("koc_paid_amount", "sum"),
-                Doanh_thu_Booking_rong=("booking_net", "sum")
-            )
-            if not booking_all.empty
-            else pd.DataFrame(
-                columns=[
-                    "Booking_da_thanh_toan",
-                    "KOC_da_thanh_toan",
-                    "Doanh_thu_Booking_rong"
+        revenue_chart = pd.DataFrame(
+            {
+                "Doanh thu": [
+                    current_ac,
+                    booking_net_revenue
                 ]
-            )
+            },
+            index=[
+                "Hoa hồng TAP",
+                "Gói dịch vụ"
+            ]
         )
 
-        monthly_chart = monthly_base.join(
-            booking_monthly,
-            how="outer"
-        ).fillna(0)
-
-        for col in [
-            "Booking_da_thanh_toan",
-            "KOC_da_thanh_toan",
-            "Doanh_thu_Booking_rong"
-        ]:
-            if col not in monthly_chart.columns:
-                monthly_chart[col] = 0
-
-        monthly_chart["Tong_doanh_thu"] = (
-            monthly_chart["Hoa_hong_thuc_te"]
-            + monthly_chart["Doanh_thu_Booking_rong"]
+        st.bar_chart(
+            revenue_chart,
+            height=360
         )
 
-        monthly_chart = monthly_chart.sort_index()
-
-        c1, c2 = st.columns(2)
-
-        if px is not None:
-
-            chart_data = (
-                monthly_chart
-                .reset_index()
-                .rename(
-                    columns={
-                        "report_month": "Tháng"
-                    }
-                )
-            )
-
-            with c1:
-                fig_gmv = px.bar(
-                    chart_data,
-                    x=chart_data.columns[0],
-                    y="GMV",
-                    title="💰 GMV theo tháng",
-                    text_auto=".3s"
-                )
-
-                fig_gmv.update_traces(
-                    marker_color="#5B8DEF"
-                )
-
-                fig_gmv.update_layout(
-                    height=360,
-                    margin=dict(
-                        l=20,
-                        r=20,
-                        t=55,
-                        b=20
-                    ),
-                    xaxis_title=None,
-                    yaxis_title=None,
-                    showlegend=False
-                )
-
-                st.plotly_chart(
-                    fig_gmv,
-                    use_container_width=True
-                )
-
-            with c2:
-                fig_revenue = px.bar(
-                    chart_data,
-                    x=chart_data.columns[0],
-                    y="Tong_doanh_thu",
-                    title="💰 Tổng doanh thu theo tháng",
-                    text_auto=".3s"
-                )
-
-                fig_revenue.update_traces(
-                    marker_color="#34A853"
-                )
-
-                fig_revenue.update_layout(
-                    height=360,
-                    margin=dict(
-                        l=20,
-                        r=20,
-                        t=55,
-                        b=20
-                    ),
-                    xaxis_title=None,
-                    yaxis_title=None,
-                    showlegend=False
-                )
-
-                st.plotly_chart(
-                    fig_revenue,
-                    use_container_width=True
-                )
-
-        else:
-
-            with c1:
-                st.write("💰 GMV")
-                st.bar_chart(
-                    monthly_chart[["GMV"]]
-                )
-
-            with c2:
-                st.write("💰 Tổng doanh thu")
-                st.bar_chart(
-                    monthly_chart[["Tong_doanh_thu"]]
-                )
+        st.caption(
+            f"Tháng {selected_month}: "
+            f"Hoa hồng TAP {money(current_ac)} • "
+            f"Gói dịch vụ ròng {money(booking_net_revenue)}"
+        )
 
         st.divider()
         st.subheader("📅 Tổng quan các tháng")
