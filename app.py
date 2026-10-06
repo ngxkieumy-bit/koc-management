@@ -288,22 +288,32 @@ bg_css = f"url('{bg_uri}')" if bg_uri else "linear-gradient(135deg, #fff8fa 0%, 
 st.markdown(
     f"""
     <style>
-    .stApp {{ background: {bg_css} center center / cover fixed no-repeat; }}
-    .stApp::before {{ content: ""; position: fixed; inset: 0; background: rgba(255,248,250,.82); z-index:-1; }}
-    /* ===== SIDEBAR MENU: XÁM ĐẬM + CHỮ TRẮNG ===== */
+    .stApp {{
+        background: {bg_css} center center / cover fixed no-repeat;
+    }}
+    .stApp::before {{
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(255,248,250,.82);
+        z-index:-1;
+    }}
+
+    /* ================= SIDEBAR - GỌN GIỐNG MẪU ================= */
     [data-testid="stSidebar"] {{
-        background: #454A50 !important;
-        border-right: 1px solid #34383D !important;
+        background: #ffffff !important;
+        border-right: 1px solid #eeeeee !important;
     }}
     [data-testid="stSidebar"] > div:first-child {{
-        background: #454A50 !important;
+        background: #ffffff !important;
     }}
+
     .app-logo-wrap {{
         display:flex;
         align-items:center;
         gap:12px;
         padding:8px 4px 18px;
-        border-bottom:1px solid rgba(255,255,255,.16);
+        border-bottom:1px solid #eeeeee;
         margin-bottom:18px;
     }}
     .app-logo {{
@@ -312,79 +322,148 @@ st.markdown(
         object-fit:contain;
         border-radius:14px;
         background:white;
-        border:1px solid rgba(255,255,255,.35);
+        border:1px solid #eeeeee;
         padding:5px;
     }}
     .app-logo-title {{
         font-size:18px;
         font-weight:900;
-        letter-spacing:.02em;
+        letter-spacing:.01em;
         line-height:1.05;
-        color:#ffffff;
+        color:#242424;
     }}
     .app-logo-sub {{
         font-size:11px;
-        color:rgba(255,255,255,.72);
+        color:#777777;
         margin-top:4px;
     }}
+
     .menu-label {{
         font-size:11px;
         text-transform:uppercase;
         letter-spacing:.10em;
-        color:rgba(255,255,255,.62);
-        font-weight:800;
+        color:#8a8a8a;
+        font-weight:900;
         margin:8px 0 10px 4px;
     }}
-    div.stButton {{
-        margin-bottom:8px !important;
+
+    /* Nhóm Tổng quan */
+    .nav-overview {{
+        border:1px solid #f0a6b8;
+        border-radius:18px;
+        padding:7px 7px 9px;
+        margin-bottom:18px;
+        background:rgba(255,255,255,.94);
     }}
-    div.stButton > button {{
-        border-radius:12px;
-        border:1px solid transparent;
+
+    .nav-parent button {{
         background:transparent !important;
-        color:#ffffff !important;
-        font-weight:800 !important;
-        min-height:44px;
-        box-shadow:none;
-        transition:all .18s ease;
-    }}
-    div.stButton > button:hover {{
-        border-color:rgba(255,255,255,.20) !important;
-        color:#ffffff !important;
-        background:rgba(255,255,255,.10) !important;
-        transform:translateX(2px);
-    }}
-    .nav-active button {{
-        background:rgba(255,255,255,.16) !important;
-        border-color:rgba(255,255,255,.22) !important;
-        color:#ffffff !important;
+        border:0 !important;
+        color:#202020 !important;
         font-weight:900 !important;
-        box-shadow:0 4px 14px rgba(0,0,0,.14) !important;
+        font-size:15px !important;
+        min-height:48px !important;
+        border-radius:13px !important;
+        text-align:left !important;
+        padding-left:12px !important;
+        box-shadow:none !important;
     }}
+    .nav-parent button:hover {{
+        background:#fff5f7 !important;
+        color:#202020 !important;
+        transform:none !important;
+    }}
+
     .nav-child {{
-        margin-top:-4px !important;
+        margin-top:2px !important;
+        margin-bottom:2px !important;
     }}
     .nav-child button {{
         text-align:left !important;
-        padding-left:22px !important;
-        font-size:13px !important;
+        padding-left:52px !important;
+        font-size:14px !important;
+        min-height:42px !important;
+        border-radius:12px !important;
         background:transparent !important;
-        border-color:transparent !important;
-        min-height:38px !important;
-        color:rgba(255,255,255,.82) !important;
+        border:0 !important;
+        color:#333333 !important;
         font-weight:700 !important;
+        box-shadow:none !important;
     }}
     .nav-child button:hover {{
-        background:rgba(255,255,255,.08) !important;
-        color:#ffffff !important;
+        background:#fff4f6 !important;
+        color:#b33f5c !important;
+        transform:none !important;
     }}
-    [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:12px 13px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); min-width:0; }}
-    [data-testid="stMetricLabel"] {{ font-size:0.78rem !important; line-height:1.15 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-    [data-testid="stMetricValue"] {{ font-size:22px !important; line-height:1.15 !important; white-space:nowrap !important; overflow:visible !important; text-overflow:clip !important; letter-spacing:-0.4px; }}
-    [data-testid="stMetricValue"] > div {{ white-space:nowrap !important; overflow:visible !important; }}
+    .nav-child.nav-active button {{
+        background:#fde7ed !important;
+        color:#9f3452 !important;
+        font-weight:900 !important;
+    }}
+
+    /* Menu chính bên dưới: cách đều, cùng chiều cao */
+    .nav-main {{
+        margin:0 0 8px 0 !important;
+    }}
+    .nav-main button {{
+        min-height:52px !important;
+        border-radius:14px !important;
+        background:transparent !important;
+        border:0 !important;
+        color:#222222 !important;
+        font-size:14px !important;
+        font-weight:800 !important;
+        text-align:left !important;
+        padding-left:14px !important;
+        box-shadow:none !important;
+    }}
+    .nav-main button:hover {{
+        background:#f7f7f7 !important;
+        color:#111111 !important;
+        transform:none !important;
+    }}
+    .nav-main.nav-active button {{
+        background:#f4f4f4 !important;
+        color:#9f3452 !important;
+        font-weight:900 !important;
+    }}
+
+    /* Nút Streamlit luôn full width, bỏ khoảng cách thừa */
+    div.stButton {{
+        margin-bottom:0 !important;
+    }}
+
+    [data-testid="stMetric"] {{
+        background:rgba(255,255,255,.88);
+        border:1px solid #f0d9df;
+        padding:12px 13px;
+        border-radius:16px;
+        box-shadow:0 5px 18px rgba(150,75,95,.06);
+        min-width:0;
+    }}
+    [data-testid="stMetricLabel"] {{
+        font-size:0.78rem !important;
+        line-height:1.15 !important;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+    }}
+    [data-testid="stMetricValue"] {{
+        font-size:22px !important;
+        line-height:1.15 !important;
+        white-space:nowrap !important;
+        overflow:visible !important;
+        text-overflow:clip !important;
+        letter-spacing:-0.4px;
+    }}
+    [data-testid="stMetricValue"] > div {{
+        white-space:nowrap !important;
+        overflow:visible !important;
+    }}
     h1,h2,h3 {{ color:#3a252b; }}
     </style>
-    """, unsafe_allow_html=True
+    """,
+    unsafe_allow_html=True
 )
 
 if logo_uri:
@@ -394,9 +473,10 @@ else:
 
 with st.sidebar:
     st.markdown(
-        f"<div class=\"app-logo-wrap\">{logo_html}<div><div class=\"app-logo-title\">SINGO AGENCY</div><div class=\"app-logo-sub\">KOC Management & Analytics</div></div></div>",
+        f'<div class="app-logo-wrap">{logo_html}<div><div class="app-logo-title">SINGO AGENCY</div><div class="app-logo-sub">KOC Management & Analytics</div></div></div>',
         unsafe_allow_html=True
     )
+
     if "page" not in st.session_state:
         st.session_state.page = "dashboard"
     if "dash_expanded" not in st.session_state:
@@ -404,35 +484,72 @@ with st.sidebar:
 
     st.markdown('<div class="menu-label">MENU</div>', unsafe_allow_html=True)
 
-    # Menu cha: Tổng quan TAP / Booking
-    dash_label = "⌄  Tổng quan số liệu TAP/Booking" if st.session_state.dash_expanded else "›  Tổng quan số liệu TAP/Booking"
-    dash_active = st.session_state.page in ["dashboard", "booking", "tap_target", "monthly"]
-    st.markdown(f'<div class="{"nav-active" if dash_active and st.session_state.page == "dashboard" else ""}">', unsafe_allow_html=True)
-    if st.button(dash_label, use_container_width=True, key="nav_dash"):
+    # ===== NHÓM TỔNG QUAN =====
+    dash_label = (
+        "📊  Tổng quan số liệu TAP/Booking  ˅"
+        if st.session_state.dash_expanded
+        else "📊  Tổng quan số liệu TAP/Booking  ›"
+    )
+
+    st.markdown('<div class="nav-overview">', unsafe_allow_html=True)
+
+    st.markdown('<div class="nav-parent">', unsafe_allow_html=True)
+    if st.button(
+        dash_label,
+        use_container_width=True,
+        key="nav_dash"
+    ):
         st.session_state.page = "dashboard"
         st.session_state.dash_expanded = not st.session_state.dash_expanded
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state.dash_expanded:
-        for label,key in [("▱  Dịch vụ Booking","booking"),("◎  Phân tích TAP","tap_target"),("▥  MO/DA (Monthly Analytics)","monthly")]:
+        overview_items = [
+            ("📦  Dịch vụ Booking", "booking"),
+            ("🎯  Phân tích TAP", "tap_target"),
+            ("▥  MO/DA (Monthly Analytics)", "monthly"),
+        ]
+
+        for label, key in overview_items:
             active = st.session_state.page == key
-            st.markdown(f'<div class="{"nav-active " if active else ""}nav-child">', unsafe_allow_html=True)
-            if st.button(label, use_container_width=True, key=f"nav_{key}"):
+            st.markdown(
+                f'<div class="nav-child {"nav-active" if active else ""}">',
+                unsafe_allow_html=True
+            )
+            if st.button(
+                label,
+                use_container_width=True,
+                key=f"nav_{key}"
+            ):
                 st.session_state.page = key
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # Khoảng cách đều giữa nhóm Tổng quan và nhóm menu chính bên dưới
-    st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("⚙  Cài đặt","settings")]:
+    # ===== 3 MENU CHÍNH BÊN DƯỚI - CÁCH ĐỀU =====
+    main_items = [
+        ("👥  DATA KOC lưu trữ", "koc"),
+        ("🏷️  Danh sách Brand", "brand"),
+        ("⚙️  Cài đặt", "settings"),
+    ]
+
+    for label, key in main_items:
         active = st.session_state.page == key
-        st.markdown(f'<div class="{"nav-active" if active else ""}">', unsafe_allow_html=True)
-        if st.button(label, use_container_width=True, key=f"nav_{key}"):
+        st.markdown(
+            f'<div class="nav-main {"nav-active" if active else ""}>',
+            unsafe_allow_html=True
+        )
+        if st.button(
+            label,
+            use_container_width=True,
+            key=f"nav_{key}"
+        ):
             st.session_state.page = key
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+
 
 page = st.session_state.page
 page_titles = {"dashboard":"Tổng quan số liệu TAP/Booking","booking":"Dịch vụ Booking","tap_target":"Phân tích TAP","monthly":"MO/DA (Monthly Analytics)","koc":"DATA KOC lưu trữ","brand":"Danh sách Brand","settings":"Cài đặt"}
