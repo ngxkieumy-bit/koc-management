@@ -401,58 +401,38 @@ if page == "🏠 Dashboard":
             st.metric("📊 Tỷ lệ hoa hồng", percent(current_rate))
 
         st.divider()
-        st.subheader("💰 Tổng doanh thu")
+        st.subheader("💰 Doanh thu")
 
-        r1, r2, r3, r4 = st.columns(4)
+        booking_net_revenue = max(
+            booking_paid_total - koc_paid_total,
+            0
+        )
+
+        total_revenue = current_ac + booking_net_revenue
+
+        r1, r2, r3 = st.columns(3)
 
         with r1:
             st.metric(
-                "TAP - Hoa hồng thực tế",
+                "💵 Hoa hồng TAP",
                 money(current_ac)
             )
 
         with r2:
             st.metric(
-                "Booking - Đã thanh toán",
-                money(booking_paid_total)
+                "📦 Gói dịch vụ ròng",
+                money(booking_net_revenue)
             )
 
         with r3:
             st.metric(
-                "👤 Tiền KOC đã thanh toán",
-                money(koc_paid_total)
-            )
-
-        with r4:
-            st.metric(
-                "💰 Doanh thu cuối",
+                "💰 Tổng doanh thu",
                 money(total_revenue)
             )
 
-        b1, b2, b3 = st.columns(3)
-
-        with b1:
-            st.metric(
-                "📦 Tổng giá trị hợp đồng",
-                money(booking_contract_total)
-            )
-
-        with b2:
-            st.metric(
-                "🟢 Booking đang chạy",
-                money(booking_running_total)
-            )
-
-        with b3:
-            st.metric(
-                "⏳ Booking chưa thanh toán",
-                money(booking_unpaid_total)
-            )
-
         st.caption(
-            "Doanh thu Booking ròng = Tiền Booking đã thanh toán - "
-            "Tiền KOC đã thanh toán. "
-            "Doanh thu cuối = Hoa hồng TAP thực tế + Doanh thu Booking ròng."
+            "Gói dịch vụ ròng = Tiền khách đã thanh toán - Tiền KOC đã thanh toán. "
+            "Tổng doanh thu = Hoa hồng TAP + Gói dịch vụ ròng."
         )
 
         if not current.empty:
@@ -2121,166 +2101,175 @@ elif page == "📦 Booking Service":
 
     service_groups = list(package_prices.keys())
 
-    st.subheader("➕ Thêm Booking")
+    # =====================================================
+    # THÊM BOOKING
+    # =====================================================
 
-    with st.form("booking_add_form"):
+    with st.expander("➕ Thêm Booking", expanded=True):
 
-        left, right = st.columns(2)
+        with st.form("booking_add_form"):
 
-        with left:
+            left, right = st.columns(2)
 
-            booking_month_date = st.date_input(
-                "📅 Tháng hợp đồng",
-                value=date.today().replace(day=1)
+            with left:
+
+                booking_month_date = st.date_input(
+                    "📅 Tháng hợp đồng",
+                    value=date.today().replace(day=1)
+                )
+
+                booking_month = booking_month_date.strftime("%Y-%m")
+
+                brand_list = (
+                    pd.read_sql(
+                        "SELECT brand_name FROM brands ORDER BY brand_name",
+                        conn
+                    )["brand_name"]
+                    .dropna()
+                    .astype(str)
+                    .tolist()
+                )
+
+                brand_options = ["➕ Brand khác"] + brand_list
+
+                brand_choice = st.selectbox(
+                    "🏷️ Brand",
+                    brand_options
+                )
+
+                if brand_choice == "➕ Brand khác":
+                    brand_name_input = st.text_input("Tên Brand")
+                else:
+                    brand_name_input = brand_choice
+
+                service_group = st.selectbox(
+                    "📦 Nhóm dịch vụ",
+                    service_groups
+                )
+
+            with right:
+
+                package_name = st.selectbox(
+                    "Gói dịch vụ",
+                    list(package_prices[service_group].keys())
+                )
+
+                tier = st.selectbox(
+                    "Tier",
+                    ["STANDARD", "SILVER", "GOLD"]
+                )
+
+                default_fee = (
+                    package_prices[service_group][package_name][tier]
+                )
+
+                contract_fee = st.number_input(
+                    "💰 Giá hợp đồng",
+                    min_value=0.0,
+                    value=float(default_fee),
+                    step=500000.0,
+                    format="%.0f"
+                )
+
+                st.caption(
+                    f"Giá gợi ý theo package: {money(default_fee)}"
+                )
+
+                running = st.checkbox("🟢 Đang chạy")
+
+                paid = st.checkbox("✅ Đã thanh toán")
+
+                paid_amount = st.number_input(
+                    "💵 Tiền Brand đã thanh toán",
+                    min_value=0.0,
+                    value=float(contract_fee) if paid else 0.0,
+                    step=500000.0,
+                    format="%.0f"
+                )
+
+                koc_paid_amount = st.number_input(
+                    "👤 Tiền KOC đã thanh toán",
+                    min_value=0.0,
+                    value=0.0,
+                    step=100000.0,
+                    format="%.0f"
+                )
+
+                st.caption(
+                    "Doanh thu Booking ròng = Brand đã thanh toán - KOC đã thanh toán."
+                )
+
+                note = st.text_area("Ghi chú")
+
+            submit_booking = st.form_submit_button(
+                "💾 Lưu Booking",
+                type="primary"
             )
 
-            booking_month = booking_month_date.strftime("%Y-%m")
+        if submit_booking:
 
-            brand_list = (
-                pd.read_sql(
-                    "SELECT brand_name FROM brands ORDER BY brand_name",
-                    conn
-                )["brand_name"]
-                .dropna()
-                .astype(str)
-                .tolist()
-            )
+            if not str(brand_name_input).strip():
 
-            brand_options = ["➕ Brand khác"] + brand_list
+                st.error("Vui lòng nhập Brand.")
 
-            brand_choice = st.selectbox(
-                "🏷️ Brand",
-                brand_options
-            )
-
-            if brand_choice == "➕ Brand khác":
-                brand_name_input = st.text_input("Tên Brand")
             else:
-                brand_name_input = brand_choice
 
-            service_group = st.selectbox(
-                "📦 Nhóm dịch vụ",
-                service_groups
-            )
-
-        with right:
-
-            package_name = st.selectbox(
-                "Gói dịch vụ",
-                list(package_prices[service_group].keys())
-            )
-
-            tier = st.selectbox(
-                "Tier",
-                ["STANDARD", "SILVER", "GOLD"]
-            )
-
-            default_fee = (
-                package_prices[service_group][package_name][tier]
-            )
-
-            contract_fee = st.number_input(
-                "💰 Giá hợp đồng",
-                min_value=0.0,
-                value=float(default_fee),
-                step=500000.0,
-                format="%.0f"
-            )
-
-            st.caption(
-                f"Giá gợi ý theo package: {money(default_fee)}"
-            )
-
-            running = st.checkbox("🟢 Đang chạy")
-            paid = st.checkbox("✅ Đã thanh toán")
-
-            paid_amount = st.number_input(
-                "💵 Tiền Brand đã thanh toán",
-                min_value=0.0,
-                value=float(contract_fee) if paid else 0.0,
-                step=500000.0,
-                format="%.0f"
-            )
-
-            koc_paid_amount = st.number_input(
-                "👤 Tiền KOC đã thanh toán",
-                min_value=0.0,
-                value=0.0,
-                step=100000.0,
-                format="%.0f"
-            )
-
-            st.caption(
-                "Doanh thu Booking ròng = Brand đã thanh toán - KOC đã thanh toán."
-            )
-
-            note = st.text_area("Ghi chú")
-
-        submit_booking = st.form_submit_button(
-            "💾 Lưu Booking",
-            type="primary"
-        )
-
-    if submit_booking:
-
-        if not str(brand_name_input).strip():
-
-            st.error("Vui lòng nhập Brand.")
-
-        else:
-
-            paid_amount_final = (
-                min(
-                    float(paid_amount),
-                    float(contract_fee)
-                )
-                if paid
-                else 0.0
-            )
-
-            cursor.execute(
-                """
-                INSERT INTO booking_services
-                (
-                    contract_month,
-                    brand_name,
-                    service_group,
-                    package_name,
-                    tier,
-                    contract_fee,
-                    running,
-                    paid,
-                    paid_amount,
-                    koc_paid_amount,
-                    note
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    booking_month,
-                    brand_name_input.strip(),
-                    service_group,
-                    package_name,
-                    tier,
-                    float(contract_fee),
-                    1 if running else 0,
-                    1 if paid else 0,
-                    paid_amount_final,
+                paid_amount_final = (
                     min(
-                        float(koc_paid_amount),
+                        float(paid_amount),
                         float(contract_fee)
-                    ),
-                    note.strip()
+                    )
+                    if paid
+                    else 0.0
                 )
-            )
 
-            conn.commit()
+                cursor.execute(
+                    """
+                    INSERT INTO booking_services
+                    (
+                        contract_month,
+                        brand_name,
+                        service_group,
+                        package_name,
+                        tier,
+                        contract_fee,
+                        running,
+                        paid,
+                        paid_amount,
+                        koc_paid_amount,
+                        note
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        booking_month,
+                        brand_name_input.strip(),
+                        service_group,
+                        package_name,
+                        tier,
+                        float(contract_fee),
+                        1 if running else 0,
+                        1 if paid else 0,
+                        paid_amount_final,
+                        min(
+                            float(koc_paid_amount),
+                            float(contract_fee)
+                        ),
+                        note.strip()
+                    )
+                )
 
-            st.success("✅ Đã thêm Booking Service.")
-            st.rerun()
+                conn.commit()
+
+                st.success("✅ Đã thêm Booking Service.")
+                st.rerun()
+
+    # =====================================================
+    # DANH SÁCH + CHỈNH NHANH
+    # =====================================================
 
     st.divider()
-    st.subheader("📋 Danh sách Booking")
+    st.subheader("📋 Quản lý Booking")
 
     booking_df = pd.read_sql(
         """
@@ -2318,7 +2307,7 @@ elif page == "📦 Booking Service":
             reverse=True
         )
 
-        f1, f2 = st.columns(2)
+        f1, f2, f3 = st.columns(3)
 
         with f1:
             booking_filter_month = st.selectbox(
@@ -2333,10 +2322,17 @@ elif page == "📦 Booking Service":
                 [
                     "Tất cả",
                     "🟢 Đang chạy",
+                    "⏳ Chưa chạy",
                     "✅ Đã thanh toán",
                     "⏳ Chưa thanh toán"
                 ],
                 key="booking_filter_status"
+            )
+
+        with f3:
+            booking_search = st.text_input(
+                "🔎 Tìm Brand / Gói",
+                key="booking_search"
             )
 
         filtered_booking = booking_df.copy()
@@ -2351,6 +2347,10 @@ elif page == "📦 Booking Service":
             filtered_booking = filtered_booking[
                 filtered_booking["running"] == 1
             ]
+        elif booking_filter_status == "⏳ Chưa chạy":
+            filtered_booking = filtered_booking[
+                filtered_booking["running"] == 0
+            ]
         elif booking_filter_status == "✅ Đã thanh toán":
             filtered_booking = filtered_booking[
                 filtered_booking["paid"] == 1
@@ -2360,9 +2360,30 @@ elif page == "📦 Booking Service":
                 filtered_booking["paid"] == 0
             ]
 
+        if booking_search.strip():
+            q = booking_search.strip().lower()
+
+            filtered_booking = filtered_booking[
+                filtered_booking["brand_name"]
+                .astype(str)
+                .str.lower()
+                .str.contains(q, na=False)
+                |
+                filtered_booking["package_name"]
+                .astype(str)
+                .str.lower()
+                .str.contains(q, na=False)
+                |
+                filtered_booking["service_group"]
+                .astype(str)
+                .str.lower()
+                .str.contains(q, na=False)
+            ]
+
         total_contract = float(
             filtered_booking["contract_fee"].sum()
         )
+
         total_paid = float(
             filtered_booking["paid_amount"].sum()
         )
@@ -2371,9 +2392,8 @@ elif page == "📦 Booking Service":
             filtered_booking["koc_paid_amount"].sum()
         )
 
-        total_booking_net = max(
-            total_paid - total_koc_paid,
-            0
+        total_booking_net = (
+            total_paid - total_koc_paid
         )
 
         total_running = float(
@@ -2391,40 +2411,39 @@ elif page == "📦 Booking Service":
         k1, k2, k3, k4, k5 = st.columns(5)
 
         with k1:
-            st.metric("📦 Tổng hợp đồng", money(total_contract))
+            st.metric(
+                "📦 Tổng hợp đồng",
+                money(total_contract)
+            )
 
         with k2:
-            st.metric("🟢 Đang chạy", money(total_running))
+            st.metric(
+                "🟢 Đang chạy",
+                money(total_running)
+            )
 
         with k3:
-            st.metric("✅ Brand đã thanh toán", money(total_paid))
+            st.metric(
+                "✅ Brand đã thanh toán",
+                money(total_paid)
+            )
 
         with k4:
-            st.metric("👤 KOC đã thanh toán", money(total_koc_paid))
+            st.metric(
+                "👤 KOC đã thanh toán",
+                money(total_koc_paid)
+            )
 
         with k5:
-            st.metric("💰 Doanh thu Booking ròng", money(total_booking_net))
+            st.metric(
+                "💰 Doanh thu Booking ròng",
+                money(total_booking_net)
+            )
 
-        display_booking = filtered_booking.copy()
-
-        display_booking["running"] = (
-            display_booking["running"].map({1: "✅", 0: "—"})
-        )
-
-        display_booking["paid"] = (
-            display_booking["paid"].map({1: "✅", 0: "—"})
-        )
-
-        display_booking["contract_fee"] = (
-            display_booking["contract_fee"].apply(money)
-        )
-
-        display_booking["paid_amount"] = (
-            display_booking["paid_amount"].apply(money)
-        )
-
-        display_booking = display_booking[
+        # Bảng chỉnh trực tiếp.
+        editor_source = filtered_booking[
             [
+                "id",
                 "contract_month",
                 "brand_name",
                 "service_group",
@@ -2437,142 +2456,177 @@ elif page == "📦 Booking Service":
                 "koc_paid_amount",
                 "note"
             ]
-        ]
+        ].copy()
 
-        display_booking["booking_net_revenue"] = (
-            filtered_booking["paid_amount"]
-            - filtered_booking["koc_paid_amount"]
-        ).clip(lower=0)
+        editor_source["running"] = (
+            editor_source["running"].astype(bool)
+        )
 
-        display_booking.columns = [
-            "Tháng",
-            "Brand",
-            "Nhóm dịch vụ",
-            "Gói",
-            "Tier",
-            "Giá hợp đồng",
-            "Đang chạy",
-            "Đã thanh toán",
-            "Brand đã thanh toán",
-            "KOC đã thanh toán",
-            "Ghi chú"
-        ]
+        editor_source["paid"] = (
+            editor_source["paid"].astype(bool)
+        )
 
-        st.dataframe(
-            display_booking,
+        edited_booking = st.data_editor(
+            editor_source,
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            num_rows="fixed",
+            key="booking_editor",
+            column_config={
+                "id": st.column_config.NumberColumn(
+                    "ID",
+                    disabled=True
+                ),
+                "contract_month": st.column_config.TextColumn(
+                    "Tháng",
+                    disabled=True
+                ),
+                "brand_name": st.column_config.TextColumn(
+                    "Brand",
+                    disabled=True
+                ),
+                "service_group": st.column_config.TextColumn(
+                    "Nhóm dịch vụ",
+                    disabled=True
+                ),
+                "package_name": st.column_config.TextColumn(
+                    "Gói",
+                    disabled=True
+                ),
+                "tier": st.column_config.TextColumn(
+                    "Tier",
+                    disabled=True
+                ),
+                "contract_fee": st.column_config.NumberColumn(
+                    "Giá hợp đồng",
+                    format="%,.0f",
+                    disabled=True
+                ),
+                "running": st.column_config.CheckboxColumn(
+                    "🟢 Đang chạy"
+                ),
+                "paid": st.column_config.CheckboxColumn(
+                    "✅ Đã thanh toán"
+                ),
+                "paid_amount": st.column_config.NumberColumn(
+                    "💵 Brand đã thanh toán",
+                    min_value=0,
+                    format="%,.0f"
+                ),
+                "koc_paid_amount": st.column_config.NumberColumn(
+                    "👤 KOC đã thanh toán",
+                    min_value=0,
+                    format="%,.0f"
+                ),
+                "note": st.column_config.TextColumn(
+                    "Ghi chú"
+                )
+            },
+            disabled=[
+                "id",
+                "contract_month",
+                "brand_name",
+                "service_group",
+                "package_name",
+                "tier",
+                "contract_fee"
+            ]
         )
 
-        st.divider()
-        st.subheader("✏️ Cập nhật trạng thái Booking")
-
-        booking_choices = filtered_booking["id"].tolist()
-
-        selected_booking_id = st.selectbox(
-            "Chọn Booking",
-            booking_choices,
-            format_func=lambda x: (
-                f"#{x} - "
-                f"{filtered_booking.loc[filtered_booking['id'] == x, 'brand_name'].iloc[0]} - "
-                f"{filtered_booking.loc[filtered_booking['id'] == x, 'package_name'].iloc[0]} "
-                f"({filtered_booking.loc[filtered_booking['id'] == x, 'contract_month'].iloc[0]})"
-            ),
-            key="edit_booking_id"
+        st.caption(
+            "💡 Tick trực tiếp Đang chạy/Đã thanh toán hoặc sửa số tiền ngay trên bảng."
         )
 
-        selected_rows = filtered_booking[
-            filtered_booking["id"] == selected_booking_id
-        ]
+        if st.button(
+            "💾 Lưu tất cả thay đổi",
+            type="primary",
+            key="save_booking_edits"
+        ):
 
-        if not selected_rows.empty:
+            updated_count = 0
 
-            selected_row = selected_rows.iloc[0]
+            for _, row in edited_booking.iterrows():
 
-            e1, e2 = st.columns(2)
+                booking_id = int(row["id"])
 
-            with e1:
-                edit_running = st.checkbox(
-                    "🟢 Đang chạy",
-                    value=bool(selected_row["running"]),
-                    key=f"edit_running_{selected_booking_id}"
+                original_row = filtered_booking[
+                    filtered_booking["id"] == booking_id
+                ]
+
+                if original_row.empty:
+                    continue
+
+                original_row = original_row.iloc[0]
+
+                running_value = bool(row["running"])
+                paid_value = bool(row["paid"])
+
+                contract_value = float(
+                    original_row["contract_fee"]
                 )
 
-                edit_paid = st.checkbox(
-                    "✅ Đã thanh toán",
-                    value=bool(selected_row["paid"]),
-                    key=f"edit_paid_{selected_booking_id}"
-                )
-
-            with e2:
-                edit_paid_amount = st.number_input(
-                    "💵 Tiền Brand đã thanh toán",
-                    min_value=0.0,
-                    max_value=float(selected_row["contract_fee"]),
-                    value=float(selected_row["paid_amount"]),
-                    step=500000.0,
-                    format="%.0f",
-                    key=f"edit_paid_amount_{selected_booking_id}"
-                )
-
-                edit_koc_paid_amount = st.number_input(
-                    "👤 Tiền KOC đã thanh toán",
-                    min_value=0.0,
-                    max_value=float(selected_row["contract_fee"]),
-                    value=float(selected_row["koc_paid_amount"]),
-                    step=100000.0,
-                    format="%.0f",
-                    key=f"edit_koc_paid_amount_{selected_booking_id}"
-                )
-
-            edit_note = st.text_area(
-                "Ghi chú cập nhật",
-                value=str(selected_row["note"] or ""),
-                key=f"edit_note_{selected_booking_id}"
-            )
-
-            if st.button(
-                "💾 Lưu cập nhật Booking",
-                type="primary",
-                key=f"update_booking_{selected_booking_id}"
-            ):
-
-                saved_paid_amount = (
-                    float(edit_paid_amount)
-                    if edit_paid
-                    else 0.0
-                )
-
-                cursor.execute(
-                    """
-                    UPDATE booking_services
-                    SET
-                        running = ?,
-                        paid = ?,
-                        paid_amount = ?,
-                        koc_paid_amount = ?,
-                        note = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        1 if edit_running else 0,
-                        1 if edit_paid else 0,
-                        saved_paid_amount,
-                        min(
-                            float(edit_koc_paid_amount),
-                            float(selected_row["contract_fee"])
-                        ),
-                        edit_note.strip(),
-                        int(selected_booking_id)
+                paid_value_amount = max(
+                    0.0,
+                    min(
+                        float(row["paid_amount"]),
+                        contract_value
                     )
                 )
 
-                conn.commit()
+                koc_value_amount = max(
+                    0.0,
+                    min(
+                        float(row["koc_paid_amount"]),
+                        contract_value
+                    )
+                )
 
-                st.success("✅ Đã cập nhật Booking.")
-                st.rerun()
+                note_value = str(
+                    row["note"]
+                    if pd.notna(row["note"])
+                    else ""
+                )
 
+                changed = (
+                    running_value != bool(original_row["running"])
+                    or paid_value != bool(original_row["paid"])
+                    or paid_value_amount != float(original_row["paid_amount"])
+                    or koc_value_amount != float(original_row["koc_paid_amount"])
+                    or note_value != str(original_row["note"] or "")
+                )
 
+                if changed:
+
+                    cursor.execute(
+                        """
+                        UPDATE booking_services
+                        SET
+                            running = ?,
+                            paid = ?,
+                            paid_amount = ?,
+                            koc_paid_amount = ?,
+                            note = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            1 if running_value else 0,
+                            1 if paid_value else 0,
+                            paid_value_amount if paid_value else 0.0,
+                            koc_value_amount,
+                            note_value.strip(),
+                            booking_id
+                        )
+                    )
+
+                    updated_count += 1
+
+            conn.commit()
+
+            st.success(
+                f"✅ Đã lưu {updated_count} Booking."
+            )
+
+            st.rerun()
 
 elif page == "📊 Monthly Analytics":
 
