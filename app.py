@@ -86,7 +86,7 @@ elif page == "👤 KOC Database":
 
     st.header("👤 KOC Database")
 
-   tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "➕ Thêm KOC",
     "🔍 Kiểm tra KOC",
     "📥 Import Excel",
