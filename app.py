@@ -269,7 +269,7 @@ def make_booking_doc(data, path):
         _replace_paragraph(doc, idx, [("…", value)])
 
     # Giá trị hợp đồng.
-    _replace_paragraph(doc, 71, [("….", number_to_vietnamese(data["total"]))])
+    _replace_paragraph(doc, 71, [("….", data.get("amount_words") or number_to_vietnamese(data["total"]))])
     _replace_paragraph(doc, 73, [("…. VNĐ", f"{data['total']:,.0f} VNĐ")])
 
     # Bảng tiền trong chính template.
@@ -317,7 +317,7 @@ def make_ctv_doc(data, path):
     t_work = doc.tables[2]
     _replace_cell(t_work.cell(1, 1), [("…", data["username"])])
     _replace_cell(t_work.cell(1, 3), [("…", data["qty"])])
-    _replace_cell(t_work.cell(1, 4), [(" …", f" {data['unit_price']:,.0f}")])
+    _replace_cell(t_work.cell(1, 4), [(" …", f" {data.get('unit_price', data.get('gross', 0) / data.get('qty', 1) if data.get('qty', 0) else 0):,.0f}")])
     _replace_cell(t_work.cell(1, 5), [("….", f"{data['gross']:,.0f}")])
     _replace_cell(t_work.cell(2, 5), [("…", f"{data['gross']:,.0f}")])
 
@@ -659,7 +659,45 @@ if page == "contracts":
             with c1: package=st.text_input("Tên gói",value="B1"); package_qty=st.number_input("Số lượng gói",min_value=1,value=1,step=1); platform=st.text_input("Nền tảng",value="TikTok")
             with c2: free=st.number_input("KOC không phí",min_value=0,value=0); micro=st.number_input("KOL Micro có phí",min_value=0,value=0); macro=st.number_input("KOC/KOL Macro có phí",min_value=0,value=0)
             with c3: commission=st.text_input("Hoa hồng tiêu chuẩn"); ads=st.text_input("Hoa hồng Ads")
-            fee=st.number_input("💰 Tiền hợp đồng / Phí quản lý Agency (chưa VAT) (VNĐ)",min_value=0.0,value=0.0,step=100000.0)
+            st.markdown("### 💰 Giá trị hợp đồng — nhập đúng theo bảng trong mẫu")
+            m1, m2 = st.columns(2)
+            with m1:
+                fee=st.number_input(
+                    "Phí quản lý Agency (VNĐ)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=100000.0,
+                    format="%.0f",
+                    help="Điền đúng số tiền ở dòng Phí quản lý Agency trong mẫu."
+                )
+            with m2:
+                vat=st.number_input(
+                    "Thuế VAT (8%) (VNĐ)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=10000.0,
+                    format="%.0f",
+                    help="Điền đúng số tiền VAT trong mẫu, app không tự tính."
+                )
+
+            total=st.number_input(
+                "Tổng giá trị mà Bên B phải thanh toán (VNĐ)",
+                min_value=0.0,
+                value=0.0,
+                step=100000.0,
+                format="%.0f",
+                help="Điền đúng tổng giá trị trong mẫu, app không tự cộng."
+            )
+
+            amount_words=st.text_input(
+                "Bằng chữ",
+                placeholder="Ví dụ: Mười một triệu không trăm mười sáu nghìn đồng",
+                help="Điền đúng câu bằng chữ muốn xuất trong hợp đồng."
+            )
+
+            if abs((fee + vat) - total) > 0.5:
+                st.warning("⚠️ Phí quản lý Agency + VAT đang không bằng Tổng giá trị. Kiểm tra lại trước khi xuất.")
+
             criteria=st.text_area("Tiêu chí / yêu cầu chiến dịch")
             st.caption("Điền 3 dòng sản phẩm và 3 dòng tiêu chí nếu muốn app điền vào đúng các ô trống trong mẫu.")
             p1=st.text_input("Sản phẩm / thông tin triển khai 1")
@@ -680,7 +718,7 @@ if page == "contracts":
                     if exists: st.error(f"Số {contract_number} đã tồn tại.")
                     else:
                         path=f"/tmp/HĐ_Booking_{int(contract_number)}_{int(year)}.docx"
-                        make_booking_doc({'number':int(contract_number),'year':int(year),'day':signed_date.day,'month':signed_date.month,'partner':partner,'rep':rep,'position':position,'phone':phone,'address':address,'tax':tax,'package':package,'qty':package_qty,'platform':platform,'free':free,'micro':micro,'macro':macro,'commission':commission,'ads':ads,'fee':fee,'vat_rate':vat_rate,'vat':vat,'total':total,'criteria':criteria,'products':[p1,p2,p3],'criteria_lines':[c1l,c2l,c3l]},path)
+                        make_booking_doc({'number':int(contract_number),'year':int(year),'day':signed_date.day,'month':signed_date.month,'partner':partner,'rep':rep,'position':position,'phone':phone,'address':address,'tax':tax,'package':package,'qty':package_qty,'platform':platform,'free':free,'micro':micro,'macro':macro,'commission':commission,'ads':ads,'fee':fee,'vat_rate':vat_rate,'vat':vat,'total':total,'amount_words':amount_words,'criteria':criteria,'products':[p1,p2,p3],'criteria_lines':[c1l,c2l,c3l]},path)
                         save_contract("Booking",contract_number,year,partner,"",str(signed_date),total,status,note)
                         st.success("Đã soạn và lưu HĐ Booking.")
                         with open(path,"rb") as f: st.download_button("⬇️ Tải HĐ Booking Word",f,file_name=Path(path).name,mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",use_container_width=True)
