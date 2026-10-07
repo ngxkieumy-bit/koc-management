@@ -248,6 +248,8 @@ def make_ctv_doc(data,path):
 # =========================
 # QUẢN LÝ HỢP ĐỒNG
 # =========================
+DB_PATH = "koc_data.db"
+
 def ensure_contract_tables():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
