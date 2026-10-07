@@ -684,7 +684,193 @@ if page != "settings":
 if page == "contracts":
     st.header("📄 Quản lý Hợp đồng")
     st.caption("Tạo hợp đồng Word mới. Nút xóa hợp đồng vẫn được giữ.")
-    tab_create,tab_list,tab_settings=st.tabs(["➕ Tạo hợp đồng","📋 Danh sách","⚙️ Số hợp đồng"])
+    tab_create,tab_list,tab_settings,tab_bulk=st.tabs(["➕ Tạo hợp đồng","📋 Danh sách","⚙️ Số hợp đồng","📦 Tạo hàng loạt CTV"])
+
+    with tab_bulk:
+        st.subheader("📦 Tạo hàng loạt Hợp đồng CTV")
+        st.caption(
+            "Mỗi dòng Excel = 1 hợp đồng. App lấy đúng mẫu HĐ CTV gốc, "
+            "điền dữ liệu, tự cấp số còn trống và gom tất cả file Word thành 1 file ZIP."
+        )
+
+        bulk_cols = [
+            "Họ và tên","Ngày sinh","CCCD","Ngày cấp CCCD","Nơi cấp CCCD",
+            "Mã số thuế","Số tài khoản","Ngân hàng","Nhãn hàng","Username",
+            "Hạng mục công việc","Số lượng","Đơn giá","Thuế TNCN (%)",
+            "Ngày ký","Trạng thái","Ghi chú"
+        ]
+
+        sample = pd.DataFrame([{
+            "Họ và tên":"Trần Thị Thu Hồng",
+            "Ngày sinh":"15/04/2002",
+            "CCCD":"024302011241",
+            "Ngày cấp CCCD":"15/05/2021",
+            "Nơi cấp CCCD":"Cục Cảnh sát QLHC về TTXH",
+            "Mã số thuế":"024302011241",
+            "Số tài khoản":"0364070427",
+            "Ngân hàng":"MBBank",
+            "Nhãn hàng":"My Kingdom",
+            "Username":"honganh_002",
+            "Hạng mục công việc":"Tham gia sản xuất và đăng tải video trên kênh TikTok với nội dung giới thiệu sản phẩm theo định hướng nhãn hàng.",
+            "Số lượng":1,
+            "Đơn giá":666667,
+            "Thuế TNCN (%)":10,
+            "Ngày ký":"21/09/2026",
+            "Trạng thái":"Dự thảo",
+            "Ghi chú":""
+        }])
+
+        sample_buf=io.BytesIO()
+        sample.to_excel(sample_buf,index=False,engine="openpyxl")
+        st.download_button(
+            "⬇️ Tải Excel mẫu",
+            data=sample_buf.getvalue(),
+            file_name="Mau_tao_hang_loat_HD_CTV.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        st.markdown("**Excel bắt buộc có các cột:**")
+        st.code(" | ".join(bulk_cols), language="text")
+
+        bulk_file=st.file_uploader(
+            "📤 Upload danh sách CTV (.xlsx)",
+            type=["xlsx"],
+            key="bulk_ctv_file"
+        )
+
+        if bulk_file:
+            df_bulk=pd.read_excel(bulk_file,dtype=str).fillna("")
+            missing=[c for c in bulk_cols if c not in df_bulk.columns]
+
+            if missing:
+                st.error("❌ Thiếu cột: " + ", ".join(missing))
+            elif df_bulk.empty:
+                st.warning("File Excel không có dòng dữ liệu.")
+            else:
+                st.success(f"Đã đọc {len(df_bulk)} CTV.")
+                st.dataframe(df_bulk[bulk_cols],use_container_width=True,hide_index=True)
+
+                if st.button("🚀 Tạo hàng loạt HĐ CTV",type="primary",use_container_width=True):
+                    conn=sqlite3.connect(DB_PATH)
+                    rows=conn.execute(
+                        "SELECT contract_number FROM contracts WHERE contract_type='CTV'"
+                    ).fetchall()
+                    conn.close()
+
+                    used={int(r[0]) for r in rows}
+                    created=[]
+                    errors=[]
+
+                    for idx,row in df_bulk.iterrows():
+                        excel_row=idx+2
+                        name=str(row["Họ và tên"]).strip()
+                        if not name:
+                            errors.append(f"Dòng {excel_row}: thiếu Họ và tên.")
+                            continue
+
+                        def sval(col):
+                            return str(row[col]).strip()
+
+                        try:
+                            qty_val=float(sval("Số lượng") or 0)
+                            unit_val=float(sval("Đơn giá") or 0)
+                            tax_rate_val=float(sval("Thuế TNCN (%)") or 10)
+                        except Exception:
+                            errors.append(f"Dòng {excel_row}: Số lượng/Đơn giá/Thuế không hợp lệ.")
+                            continue
+
+                        date_text=sval("Ngày ký")
+                        try:
+                            dt=pd.to_datetime(date_text,dayfirst=True)
+                        except Exception:
+                            errors.append(f"Dòng {excel_row}: Ngày ký không hợp lệ: {date_text}")
+                            continue
+
+                        # Chỉ cấp số sau khi dòng đã hợp lệ.
+                        no=140
+                        while no in used:
+                            no+=1
+                        used.add(no)
+
+                        gross=qty_val*unit_val
+                        tax_amt=gross*tax_rate_val/100
+                        net=gross-tax_amt
+                        safe_name=re.sub(r"[^A-Za-z0-9_-]+","_",name).strip("_") or "CTV"
+                        path=f"/tmp/HĐ_CTV_{no}_{dt.year}_{safe_name}.docx"
+
+                        data={
+                            "number":no,"year":int(dt.year),"day":int(dt.day),"month":int(dt.month),
+                            "name":name,"dob":sval("Ngày sinh"),"cccd":sval("CCCD"),
+                            "cccd_date":sval("Ngày cấp CCCD"),"cccd_place":sval("Nơi cấp CCCD"),
+                            "tax":sval("Mã số thuế"),"account":sval("Số tài khoản"),"bank":sval("Ngân hàng"),
+                            "brand":sval("Nhãn hàng"),"username":sval("Username"),
+                            "task":sval("Hạng mục công việc"),"qty":qty_val,"unit_price":unit_val,
+                            "gross":gross,"tax_rate":tax_rate_val,"tax":tax_amt,"net":net
+                        }
+
+                        try:
+                            make_ctv_doc(data,path)
+                            created.append({
+                                "path":path,"number":no,"year":int(dt.year),
+                                "name":name,"brand":sval("Nhãn hàng"),
+                                "signed_date":dt.strftime("%Y-%m-%d"),
+                                "gross":gross,
+                                "status":sval("Trạng thái") or "Dự thảo",
+                                "note":sval("Ghi chú")
+                            })
+                        except Exception as e:
+                            used.discard(no)
+                            errors.append(f"Dòng {excel_row} - {name}: {type(e).__name__}: {e}")
+
+                    if created:
+                        conn=sqlite3.connect(DB_PATH)
+                        conn.executemany(
+                            """INSERT INTO contracts
+                            (contract_type,contract_number,contract_year,contract_code,signed_date,
+                             partner_name,brand_name,contract_value,status,note)
+                             VALUES ('CTV',?,?,?,?,?,?,?,?,?)""",
+                            [(
+                                x["number"],x["year"],f'{x["number"]}-{x["year"]}',
+                                x["signed_date"],x["name"],x["brand"],x["gross"],x["status"],x["note"]
+                            ) for x in created]
+                        )
+                        conn.commit()
+                        conn.close()
+
+                        buf=io.BytesIO()
+                        with zipfile.ZipFile(buf,"w",zipfile.ZIP_DEFLATED) as zf:
+                            for x in created:
+                                zf.write(x["path"],arcname=Path(x["path"]).name)
+                        buf.seek(0)
+
+                        st.success(f"✅ Đã tạo {len(created)} HĐ CTV hàng loạt.")
+                        st.download_button(
+                            "⬇️ Tải toàn bộ HĐ CTV (.ZIP)",
+                            data=buf.getvalue(),
+                            file_name="HĐ_CTV_hang_loat.zip",
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+
+                        result_df=pd.DataFrame([{
+                            "Số HĐ":x["number"],
+                            "CTV":x["name"],
+                            "Username":next(
+                                (str(df_bulk.iloc[i]["Username"]).strip()
+                                 for i in range(len(df_bulk))
+                                 if str(df_bulk.iloc[i]["Họ và tên"]).strip()==x["name"]),
+                                ""
+                            ),
+                            "Brand":x["brand"],
+                            "Giá trị HĐ":f'{x["gross"]:,.0f} VNĐ'
+                        } for x in created])
+                        st.dataframe(result_df,use_container_width=True,hide_index=True)
+
+                    if errors:
+                        st.warning("⚠️ Có dòng chưa tạo được:")
+                        for err in errors:
+                            st.write("• "+err)
+
     with tab_create:
         contract_type=st.selectbox("Loại hợp đồng",["Booking","CTV"])
         next_no=get_next_contract_number(contract_type)
