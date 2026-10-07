@@ -9,8 +9,10 @@ import base64
 # DATABASE
 # =========================================================
 
+DB_PATH = "koc_data.db"
+
 conn = sqlite3.connect(
-    "koc_data.db",
+    DB_PATH,
     check_same_thread=False
 )
 
@@ -437,7 +439,7 @@ with st.sidebar:
 
     st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
-    for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("⚙  Cài đặt","settings")]:
+    for label,key in [("♙  DATA KOC lưu trữ","koc"),("◇  Danh sách Brand","brand"),("📄  Hợp đồng","contracts"),("⚙  Cài đặt","settings")]:
         active = st.session_state.page == key
         st.markdown(f'<div class="{"nav-active" if active else ""}">', unsafe_allow_html=True)
         if st.button(label, use_container_width=True, key=f"nav_{key}"):
@@ -446,7 +448,7 @@ with st.sidebar:
         st.markdown('</div>', unsafe_allow_html=True)
 
 page = st.session_state.page
-page_titles = {"dashboard":"Tổng quan số liệu TAP/Booking","booking":"Dịch vụ Booking","tap_target":"Phân tích TAP","monthly":"MO/DA (Monthly Analytics)","koc":"DATA KOC lưu trữ","brand":"Danh sách Brand","settings":"Cài đặt"}
+page_titles = {"dashboard":"Tổng quan số liệu TAP/Booking","booking":"Dịch vụ Booking","tap_target":"Phân tích TAP","monthly":"MO/DA (Monthly Analytics)","koc":"DATA KOC lưu trữ","brand":"Danh sách Brand","contracts":"Hợp đồng","settings":"Cài đặt"}
 st.title(page_titles.get(page,"KOC Management & Analytics"))
 if page != "settings":
     st.caption("Hệ thống quản lý KOC/KOL, Brand, TAP và dịch vụ Booking")
@@ -457,17 +459,11 @@ if page != "settings":
 # =========================================================
 
 
-# Fallback navigation button for Contract page.
-with st.sidebar:
-    if st.button("📄 Hợp đồng", use_container_width=True):
-        st.session_state["selected_page"] = "📄 Hợp đồng"
-        st.rerun()
-
 
 # =========================
 # TRANG HỢP ĐỒNG
 # =========================
-if "📄 Hợp đồng" in str(globals().get("selected_page", "")) or "Hợp đồng" in str(globals().get("page", "")):
+if page == "contracts":
     st.header("📄 Quản lý Hợp đồng")
     st.caption("Tự động cấp số theo từng loại. Nếu xóa hợp đồng, số đó sẽ được dùng lại.")
 
