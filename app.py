@@ -1003,6 +1003,104 @@ if page == "contracts":
 # DASHBOARD
 # =========================================================
 
+
+# =========================================================
+# LIVE TAP GOOGLE SHEET
+# =========================================================
+TAP_GSHEET_ID = "1PQ1xMvmE1vvuJsndnlbasULpB5YXg7ViC8kqm3AgPcg"
+TAP_GSHEET_GID = "804857795"
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_tap_gsheet():
+    url = f"https://docs.google.com/spreadsheets/d/{TAP_GSHEET_ID}/export?format=csv&gid={TAP_GSHEET_GID}"
+    try:
+        df = pd.read_csv(url)
+        df = df.dropna(how="all")
+        df.columns = [str(c).strip() for c in df.columns]
+        return df, None
+    except Exception as e:
+        return pd.DataFrame(), str(e)
+
+def render_live_tap():
+    st.header("Phân tích TAP")
+    st.caption("🔗 Nguồn dữ liệu trực tiếp: Google Sheet — Tiến Độ TAP")
+
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("🔄 Cập nhật ngay", use_container_width=True, key="refresh_live_tap"):
+            load_tap_gsheet.clear()
+            st.rerun()
+    with c2:
+        st.caption("App tự lấy dữ liệu mới tối đa mỗi 5 phút. Bấm Cập nhật ngay để lấy số mới lập tức.")
+
+    df, err = load_tap_gsheet()
+    if err:
+        st.error("❌ Không đọc được Google Sheet.")
+        st.info("Hãy chia sẻ Sheet: Share → General access → Anyone with the link → Viewer.")
+        return
+    if df.empty:
+        st.warning("Google Sheet không có dữ liệu.")
+        return
+
+    def col(*names):
+        norm = {re.sub(r"\s+", " ", str(x).strip().lower()): x for x in df.columns}
+        for name in names:
+            key = re.sub(r"\s+", " ", name.strip().lower())
+            if key in norm:
+                return norm[key]
+        return None
+
+    brand=col("TAP","Brand")
+    pic=col("PIC")
+    status=col("Trạng thái","Status")
+    target=col("Mục tiêu video")
+    video=col("Video")
+    kol=col("KOL đang hợp tác")
+    pick=col("Brand pick")
+    sample=col("Đã gửi Sample")
+    posted=col("Đã đăng bài")
+
+    a,b,c=st.columns(3)
+    with a:
+        pics=["Tất cả"] + (sorted(df[pic].astype(str).replace("nan","").unique().tolist()) if pic else [])
+        sel_pic=st.selectbox("PIC",pics,key="live_tap_pic")
+    with b:
+        brands=["Tất cả"] + (sorted(df[brand].astype(str).replace("nan","").unique().tolist()) if brand else [])
+        sel_brand=st.selectbox("Brand / TAP",brands,key="live_tap_brand")
+    with c:
+        statuses=["Tất cả"] + (sorted(df[status].astype(str).replace("nan","").unique().tolist()) if status else [])
+        sel_status=st.selectbox("Trạng thái",statuses,key="live_tap_status")
+
+    filtered=df.copy()
+    if pic and sel_pic!="Tất cả": filtered=filtered[filtered[pic].astype(str)==sel_pic]
+    if brand and sel_brand!="Tất cả": filtered=filtered[filtered[brand].astype(str)==sel_brand]
+    if status and sel_status!="Tất cả": filtered=filtered[filtered[status].astype(str)==sel_status]
+
+    def num(c):
+        if not c: return 0
+        return pd.to_numeric(
+            filtered[c].astype(str).str.replace(",","",regex=False).str.replace("%","",regex=False),
+            errors="coerce"
+        ).fillna(0).sum()
+
+    total_target=num(target)
+    total_video=num(video)
+    progress=(total_video/total_target*100) if total_target else 0
+
+    k=st.columns(7)
+    k[0].metric("Brand", len(filtered))
+    k[1].metric("Mục tiêu video", f"{int(total_target):,}")
+    k[2].metric("Video", f"{int(total_video):,}")
+    k[3].metric("KOL đang hợp tác", f"{int(num(kol)):,}")
+    k[4].metric("Brand pick", f"{int(num(pick)):,}")
+    k[5].metric("Đã gửi Sample", f"{int(num(sample)):,}")
+    k[6].metric("Đã đăng bài", f"{int(num(posted)):,}")
+
+    st.progress(min(max(progress/100,0),1))
+    st.caption(f"Tiến độ video: **{progress:.1f}%**")
+    st.dataframe(filtered,use_container_width=True,hide_index=True)
+
+
 if page == "dashboard":
 
     st.header("Tổng quan số liệu TAP/Booking")
@@ -2795,324 +2893,7 @@ elif page == "brand":
 
 elif page == "tap_target":
 
-    st.header("Phân tích TAP")
-    st.write(
-        "Theo dõi Target hoa hồng TAP theo tháng và đối chiếu "
-        "với hoa hồng thực tế từ dữ liệu TikTok."
-    )
-
-    analytics_target_data = pd.read_sql(
-        """
-        SELECT
-            report_month,
-            creator_name,
-            store_name,
-            gmv,
-            ac
-        FROM analytics
-        """,
-        conn
-    )
-
-    if analytics_target_data.empty:
-
-        st.info(
-            "📌 Chưa có dữ liệu TikTok. "
-            "Hãy vào **📊 Monthly Analytics** để upload báo cáo trước."
-        )
-
-    else:
-
-        target_months = sorted(
-            analytics_target_data["report_month"]
-            .dropna()
-            .unique()
-            .tolist(),
-            reverse=True
-        )
-
-        selected_target_month = st.selectbox(
-            "📅 Tháng cần theo dõi",
-            target_months,
-            key="tap_target_month"
-        )
-
-        month_actual = analytics_target_data[
-            analytics_target_data["report_month"] == selected_target_month
-        ].copy()
-
-        actual_ac = float(month_actual["ac"].sum())
-        actual_gmv = float(month_actual["gmv"].sum())
-
-        actual_rate = (
-            actual_ac / actual_gmv * 100
-            if actual_gmv != 0
-            else 0
-        )
-
-        target_row = cursor.execute(
-            """
-            SELECT target_ac, note
-            FROM tap_targets
-            WHERE target_month = ?
-            """,
-            (selected_target_month,)
-        ).fetchone()
-
-        saved_target = float(target_row[0]) if target_row else 0.0
-        saved_note = str(target_row[1]) if target_row and target_row[1] else ""
-
-        st.divider()
-        st.subheader("🎯 Đặt Target TAP")
-
-        target_input = st.number_input(
-            "Target hoa hồng TAP",
-            min_value=0.0,
-            value=saved_target,
-            step=500000.0,
-            format="%.0f",
-            key=f"target_input_{selected_target_month}"
-        )
-
-        target_note = st.text_area(
-            "Ghi chú Target",
-            value=saved_note,
-            placeholder="Ví dụ: Target tháng theo kế hoạch team TAP",
-            key=f"target_note_{selected_target_month}"
-        )
-
-        if st.button(
-            "💾 Lưu Target",
-            type="primary",
-            key=f"save_target_{selected_target_month}"
-        ):
-
-            cursor.execute(
-                """
-                INSERT INTO tap_targets (target_month, target_ac, note)
-                VALUES (?, ?, ?)
-                ON CONFLICT(target_month)
-                DO UPDATE SET
-                    target_ac = excluded.target_ac,
-                    note = excluded.note
-                """,
-                (
-                    selected_target_month,
-                    float(target_input),
-                    target_note.strip()
-                )
-            )
-
-            conn.commit()
-
-            st.success(
-                f"✅ Đã lưu Target {selected_target_month}: "
-                f"{money(target_input)}"
-            )
-
-            st.rerun()
-
-        target_value = float(target_input)
-
-        if target_value > 0:
-            achievement = actual_ac / target_value * 100
-            remaining = max(target_value - actual_ac, 0)
-            over_target = max(actual_ac - target_value, 0)
-        else:
-            achievement = 0
-            remaining = 0
-            over_target = 0
-
-        st.divider()
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric("🎯 Target", money(target_value))
-
-        with col2:
-            st.metric("💵 Hoa hồng thực tế", money(actual_ac))
-
-        with col3:
-            st.metric("📊 % đạt Target", percent(achievement))
-
-        with col4:
-            if target_value > 0 and remaining > 0:
-                st.metric("⚠️ Còn thiếu", money(remaining))
-            elif target_value > 0:
-                st.metric("✅ Vượt Target", money(over_target))
-            else:
-                st.metric("⚠️ Còn thiếu", "—")
-
-        if target_value <= 0:
-            st.info("💡 Chưa đặt Target cho tháng này.")
-        elif actual_ac >= target_value:
-            st.success(
-                f"🎉 Tháng {selected_target_month} đã đạt Target TAP!"
-            )
-        else:
-            st.warning(
-                f"📌 Cần thêm {money(remaining)} hoa hồng thực tế để đạt Target."
-            )
-
-        st.subheader("🧮 Ước tính GMV cần thêm")
-
-        if target_value > 0 and remaining > 0 and actual_rate > 0:
-
-            extra_gmv = remaining / (actual_rate / 100)
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-                st.metric("GMV hiện tại", money(actual_gmv))
-
-            with c2:
-                st.metric("GMV cần thêm (ước tính)", money(extra_gmv))
-
-            st.caption(
-                "Ước tính theo tỷ lệ hoa hồng thực tế hiện tại "
-                f"({actual_rate:.4f}%)."
-            )
-
-        elif target_value > 0 and remaining > 0:
-            st.info(
-                "Chưa thể ước tính GMV cần thêm vì tỷ lệ hoa hồng hiện tại bằng 0%."
-            )
-
-        st.divider()
-        st.subheader("🏷️ Đóng góp của từng Brand")
-
-        brand_target = (
-            month_actual.groupby("store_name", as_index=False)
-            .agg(
-                GMV=("gmv", "sum"),
-                AC=("ac", "sum"),
-                KOC=("creator_name", "nunique")
-            )
-            .sort_values("AC", ascending=False)
-        )
-
-        brand_target["Đóng góp hoa hồng (%)"] = (
-            brand_target["AC"] / actual_ac * 100
-            if actual_ac > 0
-            else 0
-        )
-
-        brand_target["Đóng góp vào Target"] = (
-            brand_target["AC"] / target_value * 100
-            if target_value > 0
-            else 0
-        )
-
-        brand_target_display = brand_target.copy()
-        brand_target_display.columns = [
-            "Brand",
-            "GMV",
-            "Hoa hồng thực tế",
-            "KOC",
-            "Đóng góp hoa hồng (%)",
-            "Đóng góp vào Target"
-        ]
-
-        brand_target_display["GMV"] = (
-            brand_target_display["GMV"].apply(money)
-        )
-        brand_target_display["Hoa hồng thực tế"] = (
-            brand_target_display["Hoa hồng thực tế"].apply(money)
-        )
-        brand_target_display["Đóng góp hoa hồng (%)"] = (
-            brand_target_display["Đóng góp hoa hồng (%)"].apply(percent)
-        )
-        brand_target_display["Đóng góp vào Target"] = (
-            brand_target_display["Đóng góp vào Target"].apply(percent)
-        )
-
-        st.dataframe(
-            brand_target_display,
-            use_container_width=True,
-            hide_index=True
-        )
-
-        st.divider()
-        st.subheader("📅 Lịch sử Target")
-
-        target_history = pd.read_sql(
-            """
-            SELECT target_month, target_ac, note
-            FROM tap_targets
-            ORDER BY target_month DESC
-            """,
-            conn
-        )
-
-        if target_history.empty:
-            st.info("Chưa có Target nào được lưu.")
-        else:
-
-            history_actual = (
-                analytics_target_data.groupby(
-                    "report_month",
-                    as_index=False
-                )["ac"]
-                .sum()
-                .rename(columns={"ac": "actual_ac"})
-            )
-
-            target_history = target_history.merge(
-                history_actual,
-                left_on="target_month",
-                right_on="report_month",
-                how="left"
-            )
-
-            target_history["actual_ac"] = (
-                target_history["actual_ac"].fillna(0)
-            )
-
-            target_history["% đạt"] = 0.0
-
-            valid_target = target_history["target_ac"] > 0
-
-            target_history.loc[valid_target, "% đạt"] = (
-                target_history.loc[valid_target, "actual_ac"]
-                / target_history.loc[valid_target, "target_ac"]
-                * 100
-            )
-
-            history_display = target_history[
-                [
-                    "target_month",
-                    "target_ac",
-                    "actual_ac",
-                    "% đạt",
-                    "note"
-                ]
-            ].copy()
-
-            history_display.columns = [
-                "Tháng",
-                "Target",
-                "Hoa hồng thực tế",
-                "% đạt",
-                "Ghi chú"
-            ]
-
-            history_display["Target"] = (
-                history_display["Target"].apply(money)
-            )
-            history_display["Hoa hồng thực tế"] = (
-                history_display["Hoa hồng thực tế"].apply(money)
-            )
-            history_display["% đạt"] = (
-                history_display["% đạt"].apply(percent)
-            )
-
-            st.dataframe(
-                history_display,
-                use_container_width=True,
-                hide_index=True
-            )
-
+    render_live_tap()
 
 elif page == "booking":
 
