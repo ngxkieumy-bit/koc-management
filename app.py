@@ -274,51 +274,110 @@ def parse_tiktok_date(series):
 
 
 # =========================================================
-# GIAO DIỆN / THEME
+# GIAO DIỆN / THEME — BASIC TRẮNG / ĐEN
 # =========================================================
 
+# Giữ logo nếu người dùng đã lưu, nhưng giao diện mặc định không còn hồng.
 logo_bytes = get_setting("logo")
-bg_bytes = get_setting("background")
 logo_mime = get_setting("logo_mime") or "image/png"
-bg_mime = get_setting("background_mime") or "image/jpeg"
 logo_uri = image_data_uri(logo_bytes, logo_mime)
-bg_uri = image_data_uri(bg_bytes, bg_mime)
-bg_css = f"url('{bg_uri}')" if bg_uri else "linear-gradient(135deg, #fff8fa 0%, #fdecef 45%, #f8e1e7 100%)"
+
+# Chế độ giao diện được lưu trong database: light / dark / system.
+theme_mode = get_setting("theme_mode") or "system"
+if isinstance(theme_mode, bytes):
+    theme_mode = theme_mode.decode("utf-8", errors="ignore")
+if theme_mode not in {"light", "dark", "system"}:
+    theme_mode = "system"
+
+if theme_mode == "dark":
+    theme_css = """
+    .stApp { background:#111111 !important; color:#f2f2f2 !important; }
+    .stApp::before { background:#111111 !important; }
+    [data-testid="stSidebar"] { background:#181818 !important; border-right:1px solid #333 !important; }
+    [data-testid="stSidebarContent"] { background:#181818 !important; }
+    .app-logo-wrap { border-bottom-color:#333 !important; }
+    .app-logo-title { color:#fff !important; }
+    .app-logo-sub, .menu-label { color:#bdbdbd !important; }
+    div.stButton > button { background:#222 !important; color:#f2f2f2 !important; border-color:#3a3a3a !important; box-shadow:none !important; }
+    div.stButton > button:hover { background:#303030 !important; border-color:#666 !important; color:#fff !important; }
+    .nav-active button, .nav-child.nav-active button { background:#3a3a3a !important; border-color:#666 !important; color:#fff !important; }
+    .nav-child button { background:#1f1f1f !important; border-color:#363636 !important; color:#ddd !important; }
+    [data-testid="stMetric"] { background:#1d1d1d !important; border-color:#363636 !important; box-shadow:none !important; }
+    [data-testid="stMetricLabel"] { color:#cfcfcf !important; }
+    [data-testid="stMetricValue"] { color:#fff !important; }
+    h1,h2,h3,h4,h5,h6,p,span,label { color:inherit; }
+    .stDataFrame, [data-testid="stDataEditor"] { color:#eee !important; }
+    """
+elif theme_mode == "light":
+    theme_css = """
+    .stApp { background:#ffffff !important; color:#171717 !important; }
+    .stApp::before { background:#ffffff !important; }
+    [data-testid="stSidebar"] { background:#f7f7f7 !important; border-right:1px solid #dedede !important; }
+    [data-testid="stSidebarContent"] { background:#f7f7f7 !important; }
+    .app-logo-wrap { border-bottom-color:#dedede !important; }
+    .app-logo-title { color:#171717 !important; }
+    .app-logo-sub, .menu-label { color:#666 !important; }
+    div.stButton > button { background:#fff !important; color:#222 !important; border-color:#d7d7d7 !important; box-shadow:none !important; }
+    div.stButton > button:hover { background:#f1f1f1 !important; border-color:#aaa !important; color:#111 !important; }
+    .nav-active button, .nav-child.nav-active button { background:#e9e9e9 !important; border-color:#bdbdbd !important; color:#111 !important; }
+    .nav-child button { background:#fff !important; border-color:#ddd !important; color:#222 !important; }
+    [data-testid="stMetric"] { background:#fff !important; border-color:#dedede !important; box-shadow:none !important; }
+    [data-testid="stMetricLabel"] { color:#555 !important; }
+    [data-testid="stMetricValue"] { color:#111 !important; }
+    h1,h2,h3,h4,h5,h6,p,span,label { color:inherit; }
+    """
+else:
+    theme_css = """
+    .stApp { background:#ffffff !important; color:#171717 !important; }
+    .stApp::before { background:#ffffff !important; }
+    [data-testid="stSidebar"] { background:#f7f7f7 !important; border-right:1px solid #dedede !important; }
+    [data-testid="stSidebarContent"] { background:#f7f7f7 !important; }
+    .app-logo-wrap { border-bottom-color:#dedede !important; }
+    .app-logo-title { color:#171717 !important; }
+    .app-logo-sub, .menu-label { color:#666 !important; }
+    div.stButton > button { background:#fff !important; color:#222 !important; border-color:#d7d7d7 !important; box-shadow:none !important; }
+    div.stButton > button:hover { background:#f1f1f1 !important; border-color:#aaa !important; color:#111 !important; }
+    .nav-active button, .nav-child.nav-active button { background:#e9e9e9 !important; border-color:#bdbdbd !important; color:#111 !important; }
+    .nav-child button { background:#fff !important; border-color:#ddd !important; color:#222 !important; }
+    [data-testid="stMetric"] { background:#fff !important; border-color:#dedede !important; box-shadow:none !important; }
+    [data-testid="stMetricLabel"] { color:#555 !important; }
+    [data-testid="stMetricValue"] { color:#111 !important; }
+    @media (prefers-color-scheme: dark) {
+        .stApp { background:#111 !important; color:#f2f2f2 !important; }
+        .stApp::before { background:#111 !important; }
+        [data-testid="stSidebar"] { background:#181818 !important; border-right-color:#333 !important; }
+        [data-testid="stSidebarContent"] { background:#181818 !important; }
+        .app-logo-wrap { border-bottom-color:#333 !important; }
+        .app-logo-title { color:#fff !important; }
+        .app-logo-sub, .menu-label { color:#bdbdbd !important; }
+        div.stButton > button { background:#222 !important; color:#f2f2f2 !important; border-color:#3a3a3a !important; }
+        div.stButton > button:hover { background:#303030 !important; border-color:#666 !important; color:#fff !important; }
+        .nav-active button, .nav-child.nav-active button { background:#3a3a3a !important; border-color:#666 !important; color:#fff !important; }
+        .nav-child button { background:#1f1f1f !important; border-color:#363636 !important; color:#ddd !important; }
+        [data-testid="stMetric"] { background:#1d1d1d !important; border-color:#363636 !important; }
+        [data-testid="stMetricLabel"] { color:#cfcfcf !important; }
+        [data-testid="stMetricValue"] { color:#fff !important; }
+    }
+    """
 
 st.markdown(
-    f"""
-    <style>
-    .stApp {{ background: {bg_css} center center / cover fixed no-repeat; }}
-    .stApp::before {{ content: ""; position: fixed; inset: 0; background: rgba(255,248,250,.82); z-index:-1; }}
-    [data-testid="stSidebar"] {{ background:#f7f7f8; border-right:1px solid #e5e5e7; }}
-    [data-testid="stSidebarContent"] {{ padding:18px 16px 24px !important; }}
-    .app-logo-wrap {{ display:flex; align-items:center; gap:12px; padding:4px 2px 18px; border-bottom:1px solid #e3e3e5; margin-bottom:18px; }}
-    .app-logo {{ width:54px; height:54px; object-fit:contain; border-radius:14px; background:white; border:1px solid #e0e0e2; padding:5px; }}
-    .app-logo-title {{ font-size:18px; font-weight:900; letter-spacing:.02em; line-height:1.05; color:#222225; }}
-    .app-logo-sub {{ font-size:11px; color:#77777d; margin-top:4px; font-weight:600; }}
-    .menu-label {{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#55555b; font-weight:900; margin:0 0 10px 4px; }}
-    div.stButton {{ margin:0 0 9px 0 !important; }}
-    div.stButton > button {{ border-radius:13px; border:1px solid #dedee2; background:#ffffff; color:#303035; font-weight:800; min-height:48px; box-shadow:0 1px 3px rgba(0,0,0,.03); transition:all .16s ease; padding:8px 14px !important; }}
-    div.stButton > button:hover {{ border-color:#d5a7b3; color:#8f3049; background:#fff7f9; transform:translateY(-1px); }}
-    .nav-active button {{ background:#f8dce4 !important; border-color:#e8aebd !important; color:#8f3049 !important; font-weight:900 !important; box-shadow:0 3px 10px rgba(170,75,100,.08) !important; }}
-    .nav-child {{ margin-left:10px; }}
-    .nav-child button {{ text-align:left !important; padding-left:16px !important; font-size:14px !important; background:#ffffff !important; border-color:#e3e3e6 !important; min-height:44px !important; font-weight:750 !important; }}
-    .nav-child button:hover {{ background:#fff7f9 !important; }}
-    .nav-child.nav-active button {{ background:#f8dce4 !important; border-color:#e8aebd !important; color:#8f3049 !important; font-weight:900 !important; }}
-    .sidebar-group-gap {{ height:14px; }}
-    [data-testid="stMetric"] {{ background:rgba(255,255,255,.88); border:1px solid #f0d9df; padding:12px 13px; border-radius:16px; box-shadow:0 5px 18px rgba(150,75,95,.06); min-width:0; }}
-    [data-testid="stMetricLabel"] {{ font-size:0.78rem !important; line-height:1.15 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-    [data-testid="stMetricValue"] {{ font-size:22px !important; line-height:1.15 !important; white-space:nowrap !important; overflow:visible !important; text-overflow:clip !important; letter-spacing:-0.4px; }}
-    [data-testid="stMetricValue"] > div {{ white-space:nowrap !important; overflow:visible !important; }}
-    h1,h2,h3 {{ color:#3a252b; }}
-    </style>
-    """, unsafe_allow_html=True
+    f"""<style>
+    {theme_css}
+    [data-testid=\"stSidebarContent\"] {{ padding:18px 16px 24px !important; }}
+    .app-logo-wrap {{ display:flex; align-items:center; gap:12px; padding:4px 2px 16px; margin-bottom:14px; }}
+    .app-logo {{ width:54px; height:54px; object-fit:contain; border-radius:14px; background:#fff; border:1px solid #ddd; padding:5px; }}
+    .menu-label {{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; font-weight:900; margin:0 0 8px 4px; }}
+    div.stButton {{ margin:0 0 7px 0 !important; }}
+    div.stButton > button {{ border-radius:12px; font-weight:800; min-height:44px; padding:7px 13px !important; transition:all .12s ease; }}
+    .nav-child {{ margin-left:8px; }}
+    .nav-child button {{ text-align:left !important; padding-left:14px !important; font-size:14px !important; min-height:40px !important; font-weight:750 !important; }}
+    .sidebar-group-gap {{ height:7px; }}
+    [data-testid=\"stMetricLabel\"] {{ font-size:.78rem !important; line-height:1.15 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    [data-testid=\"stMetricValue\"] {{ font-size:22px !important; line-height:1.15 !important; white-space:nowrap !important; overflow:visible !important; text-overflow:clip !important; letter-spacing:-.4px; }}
+    [data-testid=\"stMetricValue\"] > div {{ white-space:nowrap !important; overflow:visible !important; }}
+    </style>""",
+    unsafe_allow_html=True
 )
-
-if logo_uri:
-    logo_html = f'<img class="app-logo" src="{logo_uri}">'
-else:
-    logo_html = '<div class="app-logo" style="display:flex;align-items:center;justify-content:center;font-size:25px;">✦</div>'
 
 with st.sidebar:
     st.markdown(
@@ -2752,6 +2811,10 @@ elif page == "booking":
             paid,
             paid_amount,
             koc_paid_amount,
+            hop_dong_mua,
+            unc_mua,
+            hop_dong_ban,
+            unc_ban,
             note
         FROM booking_services
         ORDER BY contract_month DESC, id DESC
@@ -4087,40 +4150,59 @@ elif page == "monthly":
 
 
 elif page == "settings":
-    st.header("Cài đặt giao diện")
-    st.caption("Tuỳ chỉnh logo, hình nền và giao diện hồng pastel cho toàn bộ web.")
-    tab1, tab2 = st.tabs(["🎨 Giao diện", "👀 Xem trước"])
+    st.header("Cài đặt")
+    st.caption("Giao diện cơ bản trắng / đen, sạch và dễ nhìn.")
+
+    tab1, tab2 = st.tabs(["🎨 Giao diện", "🏷️ Logo"] )
+
     with tab1:
+        st.subheader("Chế độ màu")
+        mode_labels = {
+            "light": "☀️ Sáng",
+            "dark": "🌙 Tối",
+            "system": "🌓 Theo hệ thống"
+        }
+        current_label = mode_labels.get(theme_mode, "🌓 Theo hệ thống")
+        selected_label = st.radio(
+            "Chọn giao diện",
+            list(mode_labels.values()),
+            index=list(mode_labels.values()).index(current_label),
+            horizontal=True,
+            key="theme_selector"
+        )
+        selected_mode = next(k for k,v in mode_labels.items() if v == selected_label)
+
+        if st.button("💾 Lưu giao diện", type="primary", key="save_theme_mode"):
+            save_setting("theme_mode", selected_mode)
+            st.success(f"Đã lưu: {mode_labels[selected_mode]}")
+            st.rerun()
+
+        st.info("🌓 Theo hệ thống sẽ tự chuyển sáng/tối theo chế độ màu của máy tính/Windows.")
+        st.divider()
+        st.subheader("Nền website")
+        st.write("Giao diện hiện dùng nền trắng/đen basic, không còn nền hồng mặc định.")
+        if get_setting("background"):
+            st.warning("App đang có hình nền cũ được lưu. Giao diện basic hiện đã bỏ qua hình nền này.")
+            if st.button("🗑️ Xóa hình nền cũ", key="delete_old_background"):
+                delete_setting("background")
+                delete_setting("background_mime")
+                st.success("Đã xóa hình nền cũ.")
+                st.rerun()
+
+    with tab2:
         st.subheader("Logo website")
         logo_upload = st.file_uploader("Tải logo", type=["png","jpg","jpeg","webp"], key="settings_logo")
         if logo_upload is not None:
             st.image(logo_upload, width=180)
             if st.button("💾 Lưu logo", type="primary", key="save_logo"):
-                save_setting("logo", logo_upload.getvalue()); save_setting("logo_mime", logo_upload.type); st.success("Đã lưu logo."); st.rerun()
+                save_setting("logo", logo_upload.getvalue())
+                save_setting("logo_mime", logo_upload.type)
+                st.success("Đã lưu logo.")
+                st.rerun()
         if logo_bytes:
             st.image(logo_bytes, width=180, caption="Logo hiện tại")
-            if st.button("🗑️ Xoá logo", key="delete_logo"):
-                delete_setting("logo"); delete_setting("logo_mime"); st.rerun()
-        st.divider()
-        st.subheader("Hình nền website")
-        bg_upload = st.file_uploader("Tải hình nền", type=["png","jpg","jpeg","webp"], key="settings_background")
-        if bg_upload is not None:
-            st.image(bg_upload, use_container_width=True)
-            if st.button("💾 Lưu hình nền", type="primary", key="save_background"):
-                save_setting("background", bg_upload.getvalue()); save_setting("background_mime", bg_upload.type); st.success("Đã lưu hình nền."); st.rerun()
-        if bg_bytes:
-            st.image(bg_bytes, use_container_width=True, caption="Hình nền hiện tại")
-            if st.button("🗑️ Khôi phục nền hồng mặc định", key="delete_background"):
-                delete_setting("background"); delete_setting("background_mime"); st.rerun()
-        st.divider()
-        st.subheader("Màu giao diện")
-        st.color_picker("Màu chủ đạo", value="#D85B78")
-        st.info("🎀 Bản này dùng hồng pastel làm màu chủ đạo.")
-    with tab2:
-        st.subheader("Preview")
-        c1,c2 = st.columns([1,2])
-        with c1:
-            if logo_bytes: st.image(logo_bytes, width=180)
-            else: st.markdown("### ✦ KOC")
-        with c2:
-            st.markdown("<div style='background:rgba(255,255,255,.9);padding:24px;border-radius:20px;border:1px solid #f0d6dd;'><h3 style='color:#8d3048;margin-top:0'>Tổng quan số liệu TAP/Booking</h3><p>Giao diện hồng pastel • sidebar menu dạng thu gọn • icon đồng bộ.</p></div>", unsafe_allow_html=True)
+            if st.button("🗑️ Xóa logo", key="delete_logo"):
+                delete_setting("logo")
+                delete_setting("logo_mime")
+                st.rerun()
+
