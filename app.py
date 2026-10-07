@@ -724,18 +724,48 @@ def load_tap_gsheet(sheet_url):
     if parse_err:
         return pd.DataFrame(), parse_err
 
-    csv_url = (
-        f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
-        f"/export?format=csv&gid={gid}"
-    )
+    # Ưu tiên Google Visualization (gviz) vì một số Google Workspace
+    # trả HTTP 401 với endpoint /export dù Sheet đã bật "Anyone with the link".
+    urls = [
+        (
+            f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+            f"/gviz/tq?tqx=out:csv&gid={gid}"
+        ),
+        (
+            f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+            f"/export?format=csv&gid={gid}"
+        ),
+    ]
 
-    try:
-        df = pd.read_csv(csv_url)
-        df = df.dropna(how="all")
-        df.columns = [str(c).strip() for c in df.columns]
-        return df, None
-    except Exception as e:
-        return pd.DataFrame(), str(e)
+    errors = []
+    for csv_url in urls:
+        try:
+            import requests
+            response = requests.get(
+                csv_url,
+                timeout=25,
+                headers={"User-Agent": "Mozilla/5.0"},
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+
+            # Google có thể trả HTML trang đăng nhập thay vì CSV.
+            content_type = response.headers.get("Content-Type", "").lower()
+            text = response.content.decode("utf-8-sig", errors="replace")
+            if "text/html" in content_type and "google.visualization" not in text:
+                raise RuntimeError(f"Google trả về HTML thay vì dữ liệu CSV (HTTP {response.status_code}).")
+
+            from io import StringIO
+            df = pd.read_csv(StringIO(text))
+            df = df.dropna(how="all")
+            df.columns = [str(c).strip() for c in df.columns]
+            if not df.empty or len(df.columns) > 0:
+                return df, None
+            errors.append("Google trả về CSV rỗng.")
+        except Exception as e:
+            errors.append(f"{type(e).__name__}: {e}")
+
+    return pd.DataFrame(), " | ".join(errors)
 
 
 def render_live_tap():
