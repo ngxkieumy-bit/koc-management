@@ -188,7 +188,10 @@ def number_to_vietnamese(n):
     return " ".join(out).capitalize()+" đồng"
 
 def make_booking_doc(data, path):
-    from docx import Document
+    try:
+        from docx import Document
+    except ModuleNotFoundError:
+        raise RuntimeError("Thiếu thư viện python-docx. Hãy thêm python-docx vào requirements.txt rồi redeploy Streamlit.")
     from docx.shared import Cm, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc=Document(); sec=doc.sections[0]
@@ -213,7 +216,10 @@ def make_booking_doc(data, path):
     doc.save(path)
 
 def make_ctv_doc(data,path):
-    from docx import Document
+    try:
+        from docx import Document
+    except ModuleNotFoundError:
+        raise RuntimeError("Thiếu thư viện python-docx. Hãy thêm python-docx vào requirements.txt rồi redeploy Streamlit.")
     from docx.shared import Cm, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc=Document(); sec=doc.sections[0]; sec.top_margin=sec.bottom_margin=sec.left_margin=sec.right_margin=Cm(2.2)
