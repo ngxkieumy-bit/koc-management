@@ -214,11 +214,48 @@ def _replace_runs(run_list, replacements):
 
 def _replace_paragraph(doc, idx, replacements):
     if 0 <= idx < len(doc.paragraphs):
-        _replace_runs(doc.paragraphs[idx].runs, replacements)
+        p = doc.paragraphs[idx]
+        # Thay từ phải sang trái theo thứ tự xuất hiện để các dấu … lặp lại
+        # không bị biến thành cùng một giá trị (đặc biệt ngày/tháng/năm).
+        runs = p.runs
+        for old_text, new_text in replacements:
+            target = str(old_text)
+            replacement = str(new_text)
+            for run in runs:
+                if target and target in run.text:
+                    run.text = run.text.replace(target, replacement)
+
+def _set_paragraph_left(doc, idx):
+    if 0 <= idx < len(doc.paragraphs):
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        doc.paragraphs[idx].alignment = WD_ALIGN_PARAGRAPH.LEFT
 
 def _replace_cell(cell, replacements):
     for p in cell.paragraphs:
         _replace_runs(p.runs, replacements)
+
+def _fill_blank_cell_preserve_format(cell, text, reference_cell=None):
+    """Điền vào ô đang trống mà không phá format của mẫu Word."""
+    text = str(text or "")
+    if not text:
+        return
+    # Nếu ô có placeholder thì dùng cơ chế thay thế hiện tại.
+    if cell.text.strip():
+        _replace_cell(cell, [("…", text), ("...", text), ("....", text), ("…..", text)])
+        if text in cell.text:
+            return
+
+    # Ô hoàn toàn trống: tạo run và copy format từ ô tham chiếu.
+    p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+    run = p.add_run(text)
+    if reference_cell is not None:
+        ref_runs = [
+            r for p0 in reference_cell.paragraphs for r in p0.runs
+        ]
+        if ref_runs:
+            run._r.get_or_add_rPr().clear_content()
+            if ref_runs[0]._r.rPr is not None:
+                run._r.get_or_add_rPr().append(copy(ref_runs[0]._r.rPr))
 
 def _replace_all_in_doc(doc, replacements):
     for p in doc.paragraphs:
@@ -237,11 +274,18 @@ def make_booking_doc(data, path):
     doc = Document(_load_template(_BOOKING_TEMPLATE_B64))
 
     # Header + thông tin hai bên
+    # Mẫu gốc đang để các dòng thông tin bên A/B ở chế độ Justify;
+    # khi điền tên mới Word kéo giãn khoảng trắng giữa từng từ. Chỉ
+    # chuyển các dòng thông tin này sang căn trái, không thay đổi font.
+    for _idx in [12, 14, 15, 16, 17, 18, 19]:
+        _set_paragraph_left(doc, _idx)
+
     _replace_paragraph(doc, 4, [("…-", f"{data['number']}-")])
     _replace_paragraph(doc, 10, [
-        ("…", str(data["day"])),
-        ("…", str(data["month"])),
-        ("….", str(data["year"]))
+        (
+            "Hôm nay, ngày … tháng … năm ….,",
+            f"Hôm nay, ngày {data['day']:02d} tháng {data['month']:02d} năm {data['year']},"
+        )
     ])
     _replace_paragraph(doc, 14, [("….", data["partner"])])
     _replace_paragraph(doc, 15, [("…..", data["rep"])])
@@ -315,7 +359,11 @@ def make_ctv_doc(data, path):
 
     # Bảng công việc/đơn giá/thành tiền.
     t_work = doc.tables[2]
-    _replace_cell(t_work.cell(1, 1), [("…", data["username"])])
+    _fill_blank_cell_preserve_format(
+        t_work.cell(1, 1),
+        data.get("username", ""),
+        reference_cell=t_work.cell(1, 2)
+    )
     _replace_cell(t_work.cell(1, 3), [("…", data["qty"])])
     _replace_cell(t_work.cell(1, 4), [(" …", f" {data.get('unit_price', data.get('gross', 0) / data.get('qty', 1) if data.get('qty', 0) else 0):,.0f}")])
     _replace_cell(t_work.cell(1, 5), [("….", f"{data['gross']:,.0f}")])
