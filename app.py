@@ -564,9 +564,13 @@ if page == "contracts":
             c1,c2,c3=st.columns(3)
             with c1: package=st.text_input("Tên gói",value="B1"); package_qty=st.number_input("Số lượng gói",min_value=1,value=1,step=1); platform=st.text_input("Nền tảng",value="TikTok")
             with c2: free=st.number_input("KOC không phí",min_value=0,value=0); micro=st.number_input("KOL Micro có phí",min_value=0,value=0); macro=st.number_input("KOC/KOL Macro có phí",min_value=0,value=0)
-            with c3: commission=st.text_input("Hoa hồng tiêu chuẩn"); ads=st.text_input("Hoa hồng Ads"); fee=st.number_input("Phí quản lý Agency (VNĐ)",min_value=0.0,value=0.0,step=100000.0)
+            with c3: commission=st.text_input("Hoa hồng tiêu chuẩn"); ads=st.text_input("Hoa hồng Ads")
+            fee=st.number_input("💰 Tiền hợp đồng / Phí quản lý Agency (chưa VAT) (VNĐ)",min_value=0.0,value=0.0,step=100000.0)
             criteria=st.text_area("Tiêu chí / yêu cầu chiến dịch"); vat_rate=st.number_input("VAT (%)",min_value=0.0,value=8.0,step=0.5)
-            vat=fee*vat_rate/100; total=fee+vat; st.metric("Tổng giá trị hợp đồng",f"{total:,.0f} VNĐ"); note=st.text_area("Ghi chú")
+            vat=fee*vat_rate/100; total=fee+vat
+            st.metric("💰 Tiền hợp đồng",f"{fee:,.0f} VNĐ")
+            st.metric("Tổng giá trị hợp đồng (đã VAT)",f"{total:,.0f} VNĐ")
+            note=st.text_area("Ghi chú")
             if st.button("📄 Soạn & tải Hợp đồng Word",type="primary",use_container_width=True):
                 if not partner.strip(): st.error("Vui lòng nhập tên đối tác.")
                 else:
@@ -587,8 +591,12 @@ if page == "contracts":
             c1,c2,c3=st.columns(3)
             with c1: qty=st.number_input("Số lượng",min_value=0.0,value=1.0,step=1.0)
             with c2: unit=st.number_input("Đơn giá (VNĐ)",min_value=0.0,value=0.0,step=10000.0)
+            contract_money=qty*unit
             with c3: tax_rate=st.number_input("Thuế TNCN (%)",min_value=0.0,value=10.0,step=0.5)
-            gross=qty*unit; tax_amt=gross*tax_rate/100; net=gross-tax_amt; c1,c2=st.columns(2); c1.metric("Tổng thù lao",f"{gross:,.0f} VNĐ"); c2.metric("CTV thực nhận",f"{net:,.0f} VNĐ"); note=st.text_area("Ghi chú")
+            gross=qty*unit; tax_amt=gross*tax_rate/100; net=gross-tax_amt
+            st.metric("💰 Tiền hợp đồng / Tổng thù lao",f"{gross:,.0f} VNĐ")
+            c1,c2=st.columns(2); c1.metric("Thuế TNCN",f"{tax_amt:,.0f} VNĐ"); c2.metric("CTV thực nhận",f"{net:,.0f} VNĐ")
+            note=st.text_area("Ghi chú")
             if st.button("📄 Soạn & tải Hợp đồng Word",type="primary",use_container_width=True):
                 if not name.strip(): st.error("Vui lòng nhập họ tên CTV.")
                 else:
@@ -597,7 +605,7 @@ if page == "contracts":
                     else:
                         path=f"/mnt/data/HĐ_CTV_{int(contract_number)}_{int(year)}.docx"
                         make_ctv_doc({'number':int(contract_number),'year':int(year),'day':signed_date.day,'month':signed_date.month,'name':name,'dob':dob,'cccd':cccd,'cccd_date':cccd_date,'cccd_place':cccd_place,'tax':tax,'account':account,'bank':bank,'brand':brand,'username':username,'task':task,'qty':qty,'gross':gross,'tax_rate':tax_rate,'tax':tax_amt,'net':net},path)
-                        save_contract("CTV",contract_number,year,name,brand,str(signed_date),net,status,note)
+                        save_contract("CTV",contract_number,year,name,brand,str(signed_date),gross,status,note)
                         st.success("Đã soạn và lưu HĐ CTV.")
                         with open(path,"rb") as f: st.download_button("⬇️ Tải HĐ CTV Word",f,file_name=Path(path).name,mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",use_container_width=True)
     with tab_list:
