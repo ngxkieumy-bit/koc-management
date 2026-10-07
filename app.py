@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import date
 import base64
 import re
+import unicodedata
 import urllib.parse
 from pathlib import Path
 
@@ -809,22 +810,38 @@ def render_live_tap():
         st.warning("Google Sheet không có dữ liệu.")
         return
 
+    def _norm_col(value):
+        # Chuẩn hóa tên cột: xuống dòng, dấu ngoặc [tổng], dấu tiếng Việt...
+        text = str(value).replace("\n", " ").replace("\r", " ")
+        text = re.sub(r"\[[^\]]*\]", " ", text)
+        text = text.strip().lower()
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+        text = text.replace("đ", "d")
+        text = re.sub(r"[^a-z0-9/]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     def col(*names):
-        norm = {re.sub(r"\s+", " ", str(x).strip().lower()): x for x in df.columns}
-        for name in names:
-            key = re.sub(r"\s+", " ", name.strip().lower())
-            if key in norm:
-                return norm[key]
+        normalized = [(str(x), _norm_col(x)) for x in df.columns]
+        wanted = [_norm_col(name) for name in names]
+        for want in wanted:
+            for original, norm in normalized:
+                if norm == want:
+                    return original
+        for want in wanted:
+            for original, norm in normalized:
+                if want and (norm.startswith(want) or want in norm):
+                    return original
         return None
 
-    brand = col("TAP", "Brand")
+    brand = col("TAP", "TAP / Brand", "Brand")
     pic = col("PIC")
     status = col("Trạng thái", "Status")
     target = col("Mục tiêu video")
     video = col("Video")
     kol = col("KOL đang hợp tác")
     pick = col("Brand pick")
-    sample = col("Đã gửi Sample")
+    sample = col("Đã gửi Sample", "Đã gửi\nSample")
     posted = col("Đã đăng bài")
 
     a, b, c = st.columns(3)
