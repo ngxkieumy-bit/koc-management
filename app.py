@@ -3360,6 +3360,10 @@ elif page == "booking":
             paid,
             paid_amount,
             koc_paid_amount,
+            hop_dong_mua,
+            unc_mua,
+            hop_dong_ban,
+            unc_ban,
             note
         FROM booking_services
         ORDER BY contract_month DESC, id DESC
