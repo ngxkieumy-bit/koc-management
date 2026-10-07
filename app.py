@@ -580,7 +580,7 @@ if page == "contracts":
                     con=sqlite3.connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("Booking",int(contract_number),int(year))).fetchone(); con.close()
                     if exists: st.error(f"Số {contract_number} đã tồn tại.")
                     else:
-                        path=f"/mnt/data/HĐ_Booking_{int(contract_number)}_{int(year)}.docx"
+                        path=f"/tmp/HĐ_Booking_{int(contract_number)}_{int(year)}.docx"
                         make_booking_doc({'number':int(contract_number),'year':int(year),'day':signed_date.day,'month':signed_date.month,'partner':partner,'rep':rep,'position':position,'phone':phone,'address':address,'tax':tax,'package':package,'qty':package_qty,'platform':platform,'free':free,'micro':micro,'macro':macro,'commission':commission,'ads':ads,'fee':fee,'vat_rate':vat_rate,'vat':vat,'total':total,'criteria':criteria},path)
                         save_contract("Booking",contract_number,year,partner,"",str(signed_date),total,status,note)
                         st.success("Đã soạn và lưu HĐ Booking.")
@@ -606,7 +606,7 @@ if page == "contracts":
                     con=sqlite3.connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("CTV",int(contract_number),int(year))).fetchone(); con.close()
                     if exists: st.error(f"Số {contract_number} đã tồn tại.")
                     else:
-                        path=f"/mnt/data/HĐ_CTV_{int(contract_number)}_{int(year)}.docx"
+                        path=f"/tmp/HĐ_CTV_{int(contract_number)}_{int(year)}.docx"
                         make_ctv_doc({'number':int(contract_number),'year':int(year),'day':signed_date.day,'month':signed_date.month,'name':name,'dob':dob,'cccd':cccd,'cccd_date':cccd_date,'cccd_place':cccd_place,'tax':tax,'account':account,'bank':bank,'brand':brand,'username':username,'task':task,'qty':qty,'gross':gross,'tax_rate':tax_rate,'tax':tax_amt,'net':net},path)
                         save_contract("CTV",contract_number,year,name,brand,str(signed_date),gross,status,note)
                         st.success("Đã soạn và lưu HĐ CTV.")
