@@ -281,6 +281,7 @@ def parse_tiktok_date(series):
 logo_bytes = get_setting("logo")
 logo_mime = get_setting("logo_mime") or "image/png"
 logo_uri = image_data_uri(logo_bytes, logo_mime)
+logo_html = f'<img class="app-logo" src="{logo_uri}" />' if logo_uri else "<div class=\"app-logo\">S</div>"
 
 # Chế độ giao diện được lưu trong database: light / dark / system.
 theme_mode = get_setting("theme_mode") or "system"
