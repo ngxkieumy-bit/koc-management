@@ -65,6 +65,19 @@ try:
 except Exception:
     pass
 
+# Thêm mã sản phẩm và số món bán ra để xác định sản phẩm bán chạy nhất theo Brand.
+try:
+    cursor.execute("ALTER TABLE analytics ADD COLUMN product_id TEXT DEFAULT ''")
+    conn.commit()
+except Exception:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE analytics ADD COLUMN sold_qty REAL DEFAULT 0")
+    conn.commit()
+except Exception:
+    pass
+
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS tap_targets (
@@ -2694,14 +2707,43 @@ if page == "dashboard":
                     .head(10)
                 )
 
-                top_brand_display = top_brand.copy()
+                # Tên sản phẩm bán chạy nhất của từng Brand
+                brand_products = (
+                    current[["store_name", "product_id", "product_name", "sold_qty"]]
+                    .copy()
+                )
+                brand_products["product_id"] = (
+                    brand_products["product_id"].fillna("").astype(str).str.strip()
+                )
+                brand_products["product_name"] = (
+                    brand_products["product_name"].fillna("").astype(str)
+                    .str.replace("\r", "", regex=False).str.strip()
+                )
+                brand_products["sold_qty"] = pd.to_numeric(
+                    brand_products["sold_qty"], errors="coerce"
+                ).fillna(0)
+                brand_products = (
+                    brand_products[brand_products["product_name"].ne("")]
+                    .groupby(["store_name", "product_id", "product_name"], as_index=False)["sold_qty"]
+                    .sum()
+                    .sort_values(["store_name", "sold_qty"], ascending=[True, False])
+                    .drop_duplicates("store_name")
+                )
+                top_brand_display = top_brand.merge(
+                    brand_products[["store_name", "product_name"]],
+                    on="store_name", how="left"
+                )
                 top_brand_display["GMV"] = top_brand_display["GMV"].apply(money)
                 top_brand_display["AC"] = top_brand_display["AC"].apply(money)
                 top_brand_display.columns = [
                     "Brand",
                     "GMV",
-                    "Hoa hồng thực tế"
+                    "Hoa hồng thực tế",
+                    "Tên sản phẩm bán chạy"
                 ]
+                top_brand_display = top_brand_display[[
+                    "Brand", "GMV", "Tên sản phẩm bán chạy", "Hoa hồng thực tế"
+                ]]
 
                 st.dataframe(
                     top_brand_display,
@@ -3784,15 +3826,17 @@ elif page == "monthly":
             #
             # A = 0 (Ngày)
             # F = 5 (Tên nhà sáng tạo)
+            # H = 7 (ID sản phẩm / mã sản phẩm)
             # I = 8 (Tên sản phẩm)
             # L = 11 (Tên cửa hàng)
             # M = 12 (GMV)
-            # AC = 28 (Hoa hồng thực tế)
+            # AC = 28 (cột hoa hồng đang dùng trong app)
+            # AJ = 35 (Số món bán ra nhờ nhà sáng tạo)
             # -------------------------------------------------
 
             raw = pd.read_excel(
                 uploaded_file,
-                usecols=[0, 5, 8, 11, 12, 28]
+                usecols=[0, 5, 7, 8, 11, 12, 28, 35]
             )
 
 
@@ -3808,10 +3852,12 @@ elif page == "monthly":
             raw.columns = [
                 "report_date",
                 "creator_name",
+                "product_id",
                 "product_name",
                 "store_name",
                 "gmv",
-                "ac"
+                "ac",
+                "sold_qty"
             ]
 
 
@@ -3852,6 +3898,19 @@ elif page == "monthly":
                 raw["creator_name"]
                 .fillna("")
                 .astype(str)
+                .str.strip()
+            )
+
+
+            # -------------------------------------------------
+            # MÃ SẢN PHẨM
+            # -------------------------------------------------
+
+            raw["product_id"] = (
+                raw["product_id"]
+                .fillna("")
+                .astype(str)
+                .str.replace("\r", "", regex=False)
                 .str.strip()
             )
 
@@ -3906,6 +3965,16 @@ elif page == "monthly":
             raw["ac"] = clean_money(
                 raw["ac"]
             )
+
+
+            # -------------------------------------------------
+            # SỐ MÓN BÁN RA
+            # -------------------------------------------------
+
+            raw["sold_qty"] = pd.to_numeric(
+                raw["sold_qty"],
+                errors="coerce"
+            ).fillna(0)
 
 
             # -------------------------------------------------
@@ -3977,9 +4046,12 @@ elif page == "monthly":
                         "report_date",
                         "report_month",
                         "creator_name",
+                        "product_id",
+                        "product_name",
                         "store_name",
                         "gmv",
-                        "ac"
+                        "ac",
+                        "sold_qty"
                     ]
                 ].head(10).copy()
 
@@ -4006,9 +4078,12 @@ elif page == "monthly":
                     "Ngày",
                     "Tháng",
                     "KOC/NST",
+                    "Mã sản phẩm",
+                    "Tên sản phẩm",
                     "Brand",
                     "GMV",
-                    "Hoa hồng thực tế"
+                    "Hoa hồng thực tế",
+                    "Số món bán ra"
                 ]
 
 
@@ -4129,10 +4204,12 @@ elif page == "monthly":
                                 ),
                                 row.report_month,
                                 row.creator_name,
+                                row.product_id,
                                 row.product_name,
                                 row.store_name,
                                 float(row.gmv),
-                                float(row.ac)
+                                float(row.ac),
+                                float(row.sold_qty)
                             )
                         )
 
@@ -4144,12 +4221,14 @@ elif page == "monthly":
                             report_date,
                             report_month,
                             creator_name,
+                            product_id,
                             product_name,
                             store_name,
                             gmv,
-                            ac
+                            ac,
+                            sold_qty
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         insert_rows
                     )
@@ -4342,6 +4421,59 @@ elif page == "monthly":
         )
 
 
+        # Tìm TÊN SẢN PHẨM có số món bán ra cao nhất trong từng Brand.
+        product_sales = (
+            month_data[
+                ["store_name", "product_id", "product_name", "sold_qty"]
+            ]
+            .copy()
+        )
+
+        product_sales["product_id"] = (
+            product_sales["product_id"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+
+        product_sales["product_name"] = (
+            product_sales["product_name"]
+            .fillna("")
+            .astype(str)
+            .str.replace("\r", "", regex=False)
+            .str.strip()
+        )
+
+        product_sales = product_sales[
+            product_sales["product_id"].str.lower().ne("nan")
+            & product_sales["product_id"].ne("")
+        ]
+
+        product_sales = (
+            product_sales
+            .groupby(
+                ["store_name", "product_id", "product_name"],
+                as_index=False
+            )["sold_qty"]
+            .sum()
+        )
+
+        best_product = (
+            product_sales
+            .sort_values(
+                ["store_name", "sold_qty"],
+                ascending=[True, False]
+            )
+            .drop_duplicates("store_name")
+            [["store_name", "product_name", "sold_qty"]]
+        )
+
+        top_brand = top_brand.merge(
+            best_product,
+            on="store_name",
+            how="left"
+        )
+
         top_brand["Tỷ lệ hoa hồng"] = (
             top_brand["AC"]
             / top_brand["GMV"]
@@ -4349,20 +4481,33 @@ elif page == "monthly":
         ).fillna(0)
 
 
-        brand_display = top_brand.copy()
-
+        brand_display = top_brand[
+            [
+                "store_name",
+                "GMV",
+                "product_name",
+                "Tỷ lệ hoa hồng",
+                "AC"
+            ]
+        ].copy()
 
         brand_display["GMV"] = (
             brand_display["GMV"]
             .apply(money)
         )
 
-
-        brand_display["Hoa hồng thực tế"] = (
+        brand_display["AC"] = (
             brand_display["AC"]
             .apply(money)
         )
 
+        brand_display.columns = [
+            "store_name",
+            "GMV",
+            "Tên sản phẩm bán chạy",
+            "Tỷ lệ hoa hồng",
+            "Hoa hồng thực tế"
+        ]
 
         st.dataframe(
             brand_display,
