@@ -58,6 +58,13 @@ CREATE TABLE IF NOT EXISTS analytics (
 )
 """)
 
+# Thêm tên sản phẩm cho các database analytics đã tồn tại từ phiên bản cũ.
+try:
+    cursor.execute("ALTER TABLE analytics ADD COLUMN product_name TEXT DEFAULT ''")
+    conn.commit()
+except Exception:
+    pass
+
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS tap_targets (
@@ -2070,6 +2077,11 @@ elif page == "brand":
 # DASHBOARD
 # =========================================================
 
+
+# =========================================================
+# DASHBOARD
+# =========================================================
+
 if page == "dashboard":
 
     st.header("Tổng quan số liệu TAP/Booking")
@@ -3008,878 +3020,6 @@ if page == "dashboard":
         )
 
 
-elif page == "koc":
-
-    st.header("DATA KOC lưu trữ")
-
-    tab1, tab2, tab3, tab4 = st.tabs(
-        [
-            "➕ Thêm KOC",
-            "🔍 Kiểm tra KOC",
-            "📥 Import Excel",
-            "📋 KOC List"
-        ]
-    )
-
-
-    # =====================================================
-    # ADD KOC
-    # =====================================================
-
-    with tab1:
-
-        st.subheader(
-            "➕ Thêm KOC"
-        )
-
-        username = st.text_input(
-            "TikTok Username",
-            placeholder="@username"
-        )
-
-        phone = st.text_input(
-            "Số điện thoại"
-        )
-
-        name = st.text_input(
-            "Tên KOC"
-        )
-
-        follower = st.number_input(
-            "Follower",
-            min_value=0,
-            step=1000
-        )
-
-        category = st.selectbox(
-            "Ngành hàng",
-            [
-                "Beauty",
-                "Fashion",
-                "Food",
-                "Lifestyle",
-                "Mother & Baby",
-                "Technology",
-                "Other"
-            ]
-        )
-
-        note = st.text_area(
-            "Ghi chú"
-        )
-
-        if st.button(
-            "💾 Lưu KOC",
-            type="primary"
-        ):
-
-            username = username.strip()
-
-            if not username:
-
-                st.error(
-                    "Vui lòng nhập username."
-                )
-
-            else:
-
-                if not username.startswith("@"):
-                    username = "@" + username
-
-                try:
-
-                    cursor.execute(
-                        """
-                        INSERT INTO koc
-                        (
-                            username,
-                            phone,
-                            name,
-                            follower,
-                            category,
-                            note
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            username,
-                            phone.strip(),
-                            name.strip(),
-                            int(follower),
-                            category,
-                            note.strip()
-                        )
-                    )
-
-                    conn.commit()
-
-                    st.success(
-                        f"Đã lưu {username}!"
-                    )
-
-                except sqlite3.IntegrityError:
-
-                    st.warning(
-                        "KOC này đã tồn tại."
-                    )
-
-
-    # =====================================================
-    # CHECK KOC
-    # =====================================================
-
-    with tab2:
-
-        st.subheader(
-            "🔍 Kiểm tra hàng loạt KOC"
-        )
-
-        usernames = st.text_area(
-            "Paste username - mỗi dòng 1 username",
-            height=180
-        )
-
-        if st.button(
-            "🔎 Kiểm tra danh sách",
-            type="primary"
-        ):
-
-            names = []
-
-            for username in usernames.splitlines():
-
-                username = username.strip()
-
-                if username:
-
-                    if not username.startswith("@"):
-                        username = "@" + username
-
-                    if username not in names:
-                        names.append(username)
-
-            if not names:
-
-                st.warning(
-                    "Vui lòng nhập username."
-                )
-
-            else:
-
-                placeholders = ",".join(
-                    ["?"] * len(names)
-                )
-
-                result = pd.read_sql(
-                    f"""
-                    SELECT
-                        username,
-                        phone,
-                        name,
-                        follower,
-                        category
-                    FROM koc
-                    WHERE username IN ({placeholders})
-                    """,
-                    conn,
-                    params=names
-                )
-
-                found = set(
-                    result["username"]
-                )
-
-                output = []
-
-                for username in names:
-
-                    if username in found:
-
-                        row = result[
-                            result["username"]
-                            == username
-                        ].iloc[0]
-
-                        output.append(
-                            {
-                                "Username": username,
-                                "Trạng thái": "✅ ĐÃ CÓ",
-                                "Số điện thoại": row["phone"],
-                                "Tên": row["name"],
-                                "Follower": row["follower"],
-                                "Category": row["category"]
-                            }
-                        )
-
-                    else:
-
-                        output.append(
-                            {
-                                "Username": username,
-                                "Trạng thái": "❌ CHƯA CÓ",
-                                "Số điện thoại": "",
-                                "Tên": "",
-                                "Follower": "",
-                                "Category": ""
-                            }
-                        )
-
-                output_df = pd.DataFrame(
-                    output
-                )
-
-                found_count = (
-                    output_df["Trạng thái"]
-                    == "✅ ĐÃ CÓ"
-                ).sum()
-
-                col1, col2, col3 = st.columns(3)
-
-                col1.metric(
-                    "Tổng kiểm tra",
-                    len(output_df)
-                )
-
-                col2.metric(
-                    "✅ Đã có",
-                    int(found_count)
-                )
-
-                col3.metric(
-                    "❌ Chưa có",
-                    len(output_df)
-                    - int(found_count)
-                )
-
-                st.dataframe(
-                    output_df,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-
-                phones = output_df[
-                    output_df["Trạng thái"]
-                    == "✅ ĐÃ CÓ"
-                ]["Số điện thoại"]
-
-                phone_text = "\n".join(
-                    str(phone)
-                    for phone in phones
-                    if str(phone).strip()
-                )
-
-                if phone_text:
-
-                    st.text_area(
-                        "📱 Danh sách SĐT",
-                        phone_text,
-                        height=150
-                    )
-
-
-    # =====================================================
-    # IMPORT KOC
-    # =====================================================
-
-    with tab3:
-
-        st.subheader(
-            "📥 Import KOC từ Excel"
-        )
-
-        st.write(
-            "File cần có ít nhất:"
-        )
-
-        st.markdown(
-            "**username** và **phone**"
-        )
-
-        uploaded_file = st.file_uploader(
-            "Chọn file Excel",
-            type=["xlsx", "xls"],
-            key="koc_upload"
-        )
-
-        if uploaded_file:
-
-            try:
-
-                import_df = pd.read_excel(
-                    uploaded_file
-                )
-
-                st.dataframe(
-                    import_df.head(10),
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-                if not {
-                    "username",
-                    "phone"
-                }.issubset(import_df.columns):
-
-                    st.error(
-                        "Thiếu cột username hoặc phone."
-                    )
-
-                elif st.button(
-                    "🚀 Import vào Database",
-                    type="primary"
-                ):
-
-                    added = 0
-                    updated = 0
-                    skipped_no_phone = []
-
-                    for row_number, (_, row) in enumerate(import_df.iterrows(), start=2):
-
-                        username = str(
-                            row["username"]
-                        ).strip()
-
-                        if (
-                            not username
-                            or username == "nan"
-                        ):
-                            continue
-
-                        if not username.startswith("@"):
-                            username = "@" + username
-
-                        phone = str(
-                            row["phone"]
-                        ).strip()
-
-                        if phone == "nan":
-                            phone = ""
-
-                        # Bắt buộc phải có SĐT khi import.
-                        # Nếu có username nhưng thiếu SĐT thì bỏ qua hoàn toàn,
-                        # không thêm mới và cũng không cập nhật KOC cũ.
-                        if not phone:
-                            skipped_no_phone.append(
-                                {
-                                    "Dòng Excel": row_number,
-                                    "Username": username
-                                }
-                            )
-                            continue
-
-                        name_value = str(
-                            row.get(
-                                "name",
-                                ""
-                            )
-                        )
-
-                        if name_value == "nan":
-                            name_value = ""
-
-                        follower_value = row.get(
-                            "follower",
-                            0
-                        )
-
-                        if pd.isna(
-                            follower_value
-                        ):
-                            follower_value = 0
-
-                        category_value = str(
-                            row.get(
-                                "category",
-                                "Other"
-                            )
-                        )
-
-                        if category_value == "nan":
-                            category_value = "Other"
-
-                        note_value = str(
-                            row.get(
-                                "note",
-                                ""
-                            )
-                        )
-
-                        if note_value == "nan":
-                            note_value = ""
-
-                        exists = cursor.execute(
-                            """
-                            SELECT id
-                            FROM koc
-                            WHERE username = ?
-                            """,
-                            (username,)
-                        ).fetchone()
-
-                        if exists:
-
-                            cursor.execute(
-                                """
-                                UPDATE koc
-                                SET
-                                    phone = ?,
-                                    name = ?,
-                                    follower = ?,
-                                    category = ?,
-                                    note = ?
-                                WHERE username = ?
-                                """,
-                                (
-                                    phone,
-                                    name_value,
-                                    int(follower_value),
-                                    category_value,
-                                    note_value,
-                                    username
-                                )
-                            )
-
-                            updated += 1
-
-                        else:
-
-                            cursor.execute(
-                                """
-                                INSERT INTO koc
-                                (
-                                    username,
-                                    phone,
-                                    name,
-                                    follower,
-                                    category,
-                                    note
-                                )
-                                VALUES (?, ?, ?, ?, ?, ?)
-                                """,
-                                (
-                                    username,
-                                    phone,
-                                    name_value,
-                                    int(follower_value),
-                                    category_value,
-                                    note_value
-                                )
-                            )
-
-                            added += 1
-
-                    conn.commit()
-
-                    st.success(
-                        f"Import thành công! "
-                        f"➕ {added} mới | "
-                        f"🔄 {updated} cập nhật"
-                    )
-
-                    if skipped_no_phone:
-                        st.warning(
-                            f"⚠️ Có {len(skipped_no_phone)} case có username nhưng thiếu SĐT nên KHÔNG được lưu/cập nhật."
-                        )
-                        st.dataframe(
-                            pd.DataFrame(skipped_no_phone),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-
-            except Exception as e:
-
-                st.error(
-                    f"Lỗi: {e}"
-                )
-
-
-    # =====================================================
-    # KOC LIST
-    # =====================================================
-
-    with tab4:
-
-        st.subheader(
-            "📋 Danh sách KOC"
-        )
-
-        all_koc = pd.read_sql(
-            """
-            SELECT
-                username,
-                phone,
-                name,
-                follower,
-                category,
-                note
-            FROM koc
-            ORDER BY id DESC
-            """,
-            conn
-        )
-
-        search = st.text_input(
-            "🔎 Tìm KOC",
-            placeholder="Username / tên / SĐT"
-        )
-
-        if search.strip():
-
-            q = search.lower().strip()
-
-            all_koc = all_koc[
-                all_koc["username"]
-                .astype(str)
-                .str.lower()
-                .str.contains(q, na=False)
-                |
-                all_koc["name"]
-                .astype(str)
-                .str.lower()
-                .str.contains(q, na=False)
-                |
-                all_koc["phone"]
-                .astype(str)
-                .str.lower()
-                .str.contains(q, na=False)
-            ]
-
-        st.metric(
-            "👤 Tổng KOC",
-            len(all_koc)
-        )
-
-        st.dataframe(
-            all_koc,
-            use_container_width=True,
-            hide_index=True
-        )
-
-
-# =========================================================
-# BRAND DATABASE
-# =========================================================
-
-elif page == "brand":
-
-    st.header(
-        "🏷️ Brand Database"
-    )
-
-    tab1, tab2, tab3 = st.tabs(
-        [
-            "➕ Thêm Brand",
-            "📥 Import Excel",
-            "📋 Brand List"
-        ]
-    )
-
-
-    # =====================================================
-    # ADD BRAND
-    # =====================================================
-
-    with tab1:
-
-        st.subheader(
-            "➕ Thêm Brand"
-        )
-
-        brand_name = st.text_input(
-            "Tên Brand",
-            placeholder="Maison Lena"
-        )
-
-        commission = st.number_input(
-            "Commission (%)",
-            min_value=0.0,
-            max_value=100.0,
-            value=2.0,
-            step=0.1
-        )
-
-        target_gmv = st.number_input(
-            "🎯 GMV mục tiêu",
-            min_value=0.0,
-            value=0.0,
-            step=1000000.0
-        )
-
-        note = st.text_area(
-            "Ghi chú"
-        )
-
-        if st.button(
-            "💾 Lưu Brand",
-            type="primary"
-        ):
-
-            if not brand_name.strip():
-
-                st.error(
-                    "Vui lòng nhập tên Brand."
-                )
-
-            else:
-
-                try:
-
-                    cursor.execute(
-                        """
-                        INSERT INTO brands
-                        (
-                            brand_name,
-                            commission,
-                            target_gmv,
-                            note
-                        )
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (
-                            brand_name.strip(),
-                            commission,
-                            target_gmv,
-                            note.strip()
-                        )
-                    )
-
-                    conn.commit()
-
-                    st.success(
-                        "Đã lưu Brand!"
-                    )
-
-                except sqlite3.IntegrityError:
-
-                    st.warning(
-                        "Brand đã tồn tại."
-                    )
-
-
-    # =====================================================
-    # IMPORT BRAND
-    # =====================================================
-
-    with tab2:
-
-        st.subheader(
-            "📥 Import Brand"
-        )
-
-        uploaded_brand = st.file_uploader(
-            "Chọn file Excel",
-            type=["xlsx", "xls"],
-            key="brand_upload"
-        )
-
-        if uploaded_brand:
-
-            brand_df = pd.read_excel(
-                uploaded_brand
-            )
-
-            st.dataframe(
-                brand_df.head(10),
-                use_container_width=True,
-                hide_index=True
-            )
-
-            required = {
-                "brand_name",
-                "commission",
-                "target_gmv"
-            }
-
-            if not required.issubset(
-                brand_df.columns
-            ):
-
-                st.error(
-                    "File cần có: "
-                    "brand_name, commission, target_gmv"
-                )
-
-            elif st.button(
-                "🚀 Import Brand",
-                type="primary"
-            ):
-
-                for _, row in brand_df.iterrows():
-
-                    name = str(
-                        row["brand_name"]
-                    ).strip()
-
-                    if not name:
-                        continue
-
-                    commission_value = row[
-                        "commission"
-                    ]
-
-                    target_value = row[
-                        "target_gmv"
-                    ]
-
-                    if pd.isna(
-                        commission_value
-                    ):
-                        commission_value = 0
-
-                    if pd.isna(
-                        target_value
-                    ):
-                        target_value = 0
-
-                    note_value = str(
-                        row.get(
-                            "note",
-                            ""
-                        )
-                    )
-
-                    cursor.execute(
-                        """
-                        INSERT INTO brands
-                        (
-                            brand_name,
-                            commission,
-                            target_gmv,
-                            note
-                        )
-                        VALUES (?, ?, ?, ?)
-
-                        ON CONFLICT(brand_name)
-                        DO UPDATE SET
-                            commission =
-                                excluded.commission,
-                            target_gmv =
-                                excluded.target_gmv,
-                            note =
-                                excluded.note
-                        """,
-                        (
-                            name,
-                            float(
-                                commission_value
-                            ),
-                            float(
-                                target_value
-                            ),
-                            note_value
-                        )
-                    )
-
-                conn.commit()
-
-                st.success(
-                    "Import Brand thành công!"
-                )
-
-
-    # =====================================================
-    # BRAND LIST
-    # =====================================================
-
-    with tab3:
-
-        st.subheader(
-            "📋 Danh sách Brand"
-        )
-
-        brand_df = pd.read_sql(
-            """
-            SELECT
-                brand_name,
-                commission,
-                target_gmv,
-                note
-            FROM brands
-            ORDER BY id DESC
-            """,
-            conn
-        )
-
-        search_brand = st.text_input(
-            "🔎 Tìm Brand"
-        )
-
-        if search_brand.strip():
-
-            brand_df = brand_df[
-                brand_df["brand_name"]
-                .astype(str)
-                .str.lower()
-                .str.contains(
-                    search_brand.lower(),
-                    na=False
-                )
-            ]
-
-        brand_df["TAP dự kiến nhận"] = (
-            brand_df["target_gmv"]
-            * brand_df["commission"]
-            / 100
-        )
-
-        display = brand_df.copy()
-
-        display["GMV mục tiêu"] = (
-            display["target_gmv"]
-            .apply(money)
-        )
-
-        display["TAP dự kiến nhận"] = (
-            display["TAP dự kiến nhận"]
-            .apply(money)
-        )
-
-        display = display[
-            [
-                "brand_name",
-                "commission",
-                "GMV mục tiêu",
-                "TAP dự kiến nhận",
-                "note"
-            ]
-        ]
-
-        display.columns = [
-            "Brand",
-            "Commission (%)",
-            "GMV mục tiêu",
-            "TAP dự kiến nhận",
-            "Ghi chú"
-        ]
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric(
-            "🏷️ Tổng Brand",
-            len(brand_df)
-        )
-
-        col2.metric(
-            "🔎 Kết quả",
-            len(display)
-        )
-
-        col3.metric(
-            "🎯 Tổng GMV mục tiêu",
-            money(
-                brand_df["target_gmv"].sum()
-            )
-        )
-
-        st.dataframe(
-            display,
-            use_container_width=True,
-            hide_index=True
-        )
-
-
-
 
 elif page == "tap_target":
 
@@ -4642,16 +3782,17 @@ elif page == "monthly":
             # QUAN TRỌNG:
             # ĐỌC THEO VỊ TRÍ CỘT
             #
-            # A = 0
-            # F = 5
-            # L = 11
-            # M = 12
-            # AC = 28
+            # A = 0 (Ngày)
+            # F = 5 (Tên nhà sáng tạo)
+            # I = 8 (Tên sản phẩm)
+            # L = 11 (Tên cửa hàng)
+            # M = 12 (GMV)
+            # AC = 28 (Hoa hồng thực tế)
             # -------------------------------------------------
 
             raw = pd.read_excel(
                 uploaded_file,
-                usecols=[0, 5, 11, 12, 28]
+                usecols=[0, 5, 8, 11, 12, 28]
             )
 
 
@@ -4667,6 +3808,7 @@ elif page == "monthly":
             raw.columns = [
                 "report_date",
                 "creator_name",
+                "product_name",
                 "store_name",
                 "gmv",
                 "ac"
@@ -4710,6 +3852,19 @@ elif page == "monthly":
                 raw["creator_name"]
                 .fillna("")
                 .astype(str)
+                .str.strip()
+            )
+
+
+            # -------------------------------------------------
+            # TÊN SẢN PHẨM
+            # -------------------------------------------------
+
+            raw["product_name"] = (
+                raw["product_name"]
+                .fillna("")
+                .astype(str)
+                .str.replace("\r", "", regex=False)
                 .str.strip()
             )
 
@@ -4974,6 +4129,7 @@ elif page == "monthly":
                                 ),
                                 row.report_month,
                                 row.creator_name,
+                                row.product_name,
                                 row.store_name,
                                 float(row.gmv),
                                 float(row.ac)
@@ -4988,11 +4144,12 @@ elif page == "monthly":
                             report_date,
                             report_month,
                             creator_name,
+                            product_name,
                             store_name,
                             gmv,
                             ac
                         )
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                         insert_rows
                     )
@@ -5231,7 +4388,17 @@ elif page == "monthly":
             )
             .agg(
                 GMV=("gmv", "sum"),
-                AC=("ac", "sum")
+                AC=("ac", "sum"),
+                **{"Tên sản phẩm KOC đã bán": (
+                    "product_name",
+                    lambda s: ", ".join(
+                        dict.fromkeys(
+                            x.strip()
+                            for x in s.fillna("").astype(str)
+                            if x.strip() and x.strip().lower() not in {"nan", "-"}
+                        )
+                    )
+                )}
             )
             .sort_values(
                 "AC",
@@ -5261,6 +4428,24 @@ elif page == "monthly":
             koc_display["AC"]
             .apply(money)
         )
+
+        # Không hiển thị cột AC vì AC chính là tiền hoa hồng thực tế.
+        # Thay AC bằng tên sản phẩm KOC đã bán.
+        koc_display = koc_display[[
+            "creator_name",
+            "GMV",
+            "Tên sản phẩm KOC đã bán",
+            "Tỷ lệ hoa hồng",
+            "Hoa hồng thực tế"
+        ]]
+
+        koc_display.columns = [
+            "KOC/NST",
+            "GMV",
+            "Tên sản phẩm KOC đã bán",
+            "Tỷ lệ hoa hồng",
+            "Hoa hồng thực tế"
+        ]
 
 
         st.dataframe(
