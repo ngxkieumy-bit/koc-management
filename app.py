@@ -8,13 +8,14 @@ import unicodedata
 import urllib.parse
 import zipfile
 from pathlib import Path
+from db_compat import connect as db_connect, read_sql as db_read_sql, IntegrityError as DBIntegrityError
 
 
 # =========================================================
 # DATABASE
 # =========================================================
 
-conn = sqlite3.connect(
+conn = db_connect(
     "koc_data.db",
     check_same_thread=False
 )
@@ -414,7 +415,7 @@ def make_ctv_doc(data, path):
 DB_PATH = "koc_data.db"
 
 def ensure_contract_tables():
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS contracts (
@@ -450,7 +451,7 @@ def ensure_contract_tables():
     conn.close()
 
 def get_next_contract_number(contract_type):
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("SELECT start_number FROM contract_settings WHERE contract_type=?", (contract_type,))
     row = cur.fetchone()
@@ -468,7 +469,7 @@ def get_next_contract_number(contract_type):
 
 def save_contract(contract_type, contract_number, year, partner_name="", brand_name="",
                   signed_date="", contract_value=0, status="Dự thảo", note=""):
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connect(DB_PATH)
     conn.execute("""
         INSERT INTO contracts
         (contract_type, contract_number, contract_year, contract_code, signed_date,
@@ -483,16 +484,16 @@ def save_contract(contract_type, contract_number, year, partner_name="", brand_n
     conn.close()
 
 def delete_contract(contract_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_connect(DB_PATH)
     conn.execute("DELETE FROM contracts WHERE id=?", (int(contract_id),))
     conn.commit()
     conn.close()
 
 def get_contracts():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
+    conn = db_connect(DB_PATH)
+    df = db_read_sql(
         "SELECT * FROM contracts ORDER BY contract_year DESC, contract_number DESC",
-        conn
+        getattr(conn, "_raw", conn)
     )
     conn.close()
     return df
@@ -989,7 +990,7 @@ if page == "contracts":
                 st.dataframe(df_bulk[bulk_cols],use_container_width=True,hide_index=True)
 
                 if st.button("🚀 Tạo hàng loạt HĐ CTV",type="primary",use_container_width=True):
-                    conn=sqlite3.connect(DB_PATH)
+                    conn=db_connect(DB_PATH)
                     rows=conn.execute(
                         "SELECT contract_number FROM contracts WHERE contract_type='CTV'"
                     ).fetchall()
@@ -1061,7 +1062,7 @@ if page == "contracts":
                             errors.append(f"Dòng {excel_row} - {name}: {type(e).__name__}: {e}")
 
                     if created:
-                        conn=sqlite3.connect(DB_PATH)
+                        conn=db_connect(DB_PATH)
                         conn.executemany(
                             """INSERT INTO contracts
                             (contract_type,contract_number,contract_year,contract_code,signed_date,
@@ -1186,7 +1187,7 @@ if page == "contracts":
             if st.button("📄 Soạn & tải Hợp đồng Word",type="primary",use_container_width=True):
                 if not partner.strip(): st.error("Vui lòng nhập tên đối tác.")
                 else:
-                    con=sqlite3.connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("Booking",int(contract_number),int(year))).fetchone(); con.close()
+                    con=db_connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("Booking",int(contract_number),int(year))).fetchone(); con.close()
                     if exists: st.error(f"Số {contract_number} đã tồn tại.")
                     else:
                         path=f"/tmp/HĐ_Booking_{int(contract_number)}_{int(year)}.docx"
@@ -1212,7 +1213,7 @@ if page == "contracts":
             if st.button("📄 Soạn & tải Hợp đồng Word",type="primary",use_container_width=True):
                 if not name.strip(): st.error("Vui lòng nhập họ tên CTV.")
                 else:
-                    con=sqlite3.connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("CTV",int(contract_number),int(year))).fetchone(); con.close()
+                    con=db_connect(DB_PATH); exists=con.execute("SELECT 1 FROM contracts WHERE contract_type=? AND contract_number=? AND contract_year=?",("CTV",int(contract_number),int(year))).fetchone(); con.close()
                     if exists: st.error(f"Số {contract_number} đã tồn tại.")
                     else:
                         path=f"/tmp/HĐ_CTV_{int(contract_number)}_{int(year)}.docx"
@@ -1230,10 +1231,10 @@ if page == "contracts":
             if st.button("🗑️ Xóa hợp đồng",type="secondary"): delete_contract(del_id); st.success("Đã xóa. Số hợp đồng được trả lại để cấp lại."); st.rerun()
     with tab_settings:
         st.write("### Số bắt đầu")
-        con=sqlite3.connect(DB_PATH); rows=con.execute("SELECT contract_type,start_number FROM contract_settings ORDER BY contract_type").fetchall(); con.close()
+        con=db_connect(DB_PATH); rows=con.execute("SELECT contract_type,start_number FROM contract_settings ORDER BY contract_type").fetchall(); con.close()
         for ctype,start in rows:
             new_start=st.number_input(f"HĐ {ctype} - số bắt đầu",min_value=1,value=int(start),step=1,key=f"start_{ctype}")
-            if st.button(f"Lưu số bắt đầu {ctype}",key=f"save_start_{ctype}"): con=sqlite3.connect(DB_PATH); con.execute("UPDATE contract_settings SET start_number=? WHERE contract_type=?",(int(new_start),ctype)); con.commit(); con.close(); st.rerun()
+            if st.button(f"Lưu số bắt đầu {ctype}",key=f"save_start_{ctype}"): con=db_connect(DB_PATH); con.execute("UPDATE contract_settings SET start_number=? WHERE contract_type=?",(int(new_start),ctype)); con.commit(); con.close(); st.rerun()
     st.stop()
 
 
@@ -1346,7 +1347,7 @@ elif page == "koc":
                         f"Đã lưu {username}!"
                     )
 
-                except sqlite3.IntegrityError:
+                except DBIntegrityError:
 
                     st.warning(
                         "KOC này đã tồn tại."
@@ -1399,7 +1400,7 @@ elif page == "koc":
                     ["?"] * len(names)
                 )
 
-                result = pd.read_sql(
+                result = db_read_sql(
                     f"""
                     SELECT
                         username,
@@ -1710,7 +1711,7 @@ elif page == "koc":
             "📋 Danh sách KOC"
         )
 
-        all_koc = pd.read_sql(
+        all_koc = db_read_sql(
             """
             SELECT
                 username,
@@ -1856,7 +1857,7 @@ elif page == "brand":
                         "Đã lưu Brand!"
                     )
 
-                except sqlite3.IntegrityError:
+                except DBIntegrityError:
 
                     st.warning(
                         "Brand đã tồn tại."
@@ -1994,7 +1995,7 @@ elif page == "brand":
             "📋 Danh sách Brand"
         )
 
-        brand_df = pd.read_sql(
+        brand_df = db_read_sql(
             """
             SELECT
                 brand_name,
@@ -2103,20 +2104,20 @@ if page == "dashboard":
     )
 
     total_koc = int(
-        pd.read_sql(
+        db_read_sql(
             "SELECT COUNT(*) AS total FROM koc",
             conn
         ).iloc[0]["total"]
     )
 
     total_brand = int(
-        pd.read_sql(
+        db_read_sql(
             "SELECT COUNT(*) AS total FROM brands",
             conn
         ).iloc[0]["total"]
     )
 
-    analytics_all = pd.read_sql(
+    analytics_all = db_read_sql(
         """
         SELECT
             report_date,
@@ -2130,7 +2131,7 @@ if page == "dashboard":
         conn
     )
 
-    booking_all = pd.read_sql(
+    booking_all = db_read_sql(
         """
         SELECT
             id,
@@ -2166,7 +2167,7 @@ if page == "dashboard":
             booking_all["contract_month"].apply(normalize_month_value)
         )
 
-    revenue_targets = pd.read_sql(
+    revenue_targets = db_read_sql(
         """
         SELECT
             target_month,
@@ -2226,7 +2227,7 @@ if page == "dashboard":
         # Booking tháng: đọc trực tiếp từ cùng bảng booking_services để Dashboard
         # luôn đồng bộ với trang Booking, kể cả khi contract_month được lưu
         # dưới dạng YYYY-MM hoặc YYYY-MM-DD.
-        current_booking = pd.read_sql(
+        current_booking = db_read_sql(
             """
             SELECT
                 id, contract_month, brand_name, service_group, package_name,
@@ -2566,7 +2567,7 @@ if page == "dashboard":
                 )
             )
 
-            brand_master = pd.read_sql(
+            brand_master = db_read_sql(
                 """
                 SELECT brand_name, commission, target_gmv
                 FROM brands
@@ -3119,7 +3120,7 @@ elif page == "booking":
                 booking_month = booking_month_date.strftime("%Y-%m")
 
                 brand_list = (
-                    pd.read_sql(
+                    db_read_sql(
                         "SELECT brand_name FROM brands ORDER BY brand_name",
                         conn
                     )["brand_name"]
@@ -3299,7 +3300,7 @@ elif page == "booking":
     st.divider()
     st.subheader("📋 Quản lý Booking")
 
-    booking_df = pd.read_sql(
+    booking_df = db_read_sql(
         """
         SELECT
             id,
@@ -4253,7 +4254,7 @@ elif page == "monthly":
     # DASHBOARD DATA
     # =====================================================
 
-    analytics_data = pd.read_sql(
+    analytics_data = db_read_sql(
         """
         SELECT *
         FROM analytics

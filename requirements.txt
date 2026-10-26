@@ -1,5 +1,6 @@
 streamlit
 pandas
 openpyxl
-plotly
 python-docx
+requests
+psycopg2-binary
